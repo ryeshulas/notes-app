@@ -2,6 +2,13 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.6.0
+- Indented sub-lists: Tab / Shift+Tab, or the ⇥ / ⇤ buttons. Sub-levels number as 1. → a. → i.
+  and bullets as • → ◦ → ▪. Enter on an empty sub-item (or Backspace at its start) steps back out a level.
+- New list shortcut: two lines in a row that start with a number and a period ("1. Milk", "2. Eggs")
+  become a numbered list when you press Enter; two lines starting with "*" become a bulleted list.
+  A single line like that stays plain text. "[] " still starts a checklist item right away.
+
 ## 0.5.0
 - Bulleted lists, numbered lists and checklists in notes.
   - Buttons above the text, or type `- `, `1. ` or `[] ` at the start of a line.

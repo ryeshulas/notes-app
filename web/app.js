@@ -725,6 +725,10 @@ document.querySelectorAll('.text-tools [data-line]').forEach((b) => {
   b.addEventListener('pointerdown', (e) => e.preventDefault());
   b.addEventListener('click', () => body.setType(b.dataset.line));
 });
+for (const [sel, fn] of [['#line-indent', () => body.indent()], ['#line-outdent', () => body.outdent()]]) {
+  $(sel).addEventListener('pointerdown', (e) => e.preventDefault());
+  $(sel).addEventListener('click', fn);
+}
 $('#clear-done').addEventListener('pointerdown', (e) => e.preventDefault());
 $('#clear-done').addEventListener('click', () => body.clearDone());
 $('#note-title').addEventListener('input', () => editor.queueSave());
