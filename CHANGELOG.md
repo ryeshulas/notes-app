@@ -2,6 +2,13 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.8.0
+- Text formatting bar above the note text: font (Default, Serif, Monospace, Handwriting, Rounded),
+  **bold**, *italic*, underline, strikethrough, text color and highlight color.
+- Select text and tap a button, or tap a button first and then type. Shortcuts on the laptop:
+  Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+Shift+X.
+- Fonts are built into the app, so they work offline.
+
 ## 0.7.0
 - "📌 Keep open" option at the bottom of the folder menu keeps the menu as a column beside your notes
   (on by default on laptops/desktops). ☰ still hides/shows it. Phones always use the slide-out menu.

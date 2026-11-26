@@ -1,3 +1,16 @@
+/* Bundled fonts (work offline). All SIL Open Font License. */
+@font-face { font-family: 'NotesSerif'; src: url('/fonts/serif.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'NotesSerif'; src: url('/fonts/serif-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'NotesMono'; src: url('/fonts/mono.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'NotesMono'; src: url('/fonts/mono-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'NotesHand'; src: url('/fonts/hand.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'NotesRound'; src: url('/fonts/round.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'NotesRound'; src: url('/fonts/round-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+.f-serif { font-family: 'NotesSerif', Georgia, serif; }
+.f-mono { font-family: 'NotesMono', ui-monospace, Consolas, monospace; font-size: .92em; }
+.f-hand { font-family: 'NotesHand', 'Segoe Print', cursive; font-size: 1.4em; line-height: 1.1; }
+.f-round { font-family: 'NotesRound', system-ui, sans-serif; }
+
 :root {
   --bg: #f4f2ee;
   --panel: #ffffff;
@@ -92,7 +105,21 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 .colors { display: flex; gap: 6px; padding: 0 14px 8px; }
 .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(0,0,0,.12); padding: 0; }
 .swatch.active { border-color: #333; }
-#editor-scroll { flex: 1; overflow-y: auto; padding: 0 14px 40px; }
+#editor-scroll { flex: 1; overflow-y: auto; padding: 0 14px 40px; position: relative; }
+/* Formatting bar */
+.format-tools { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; margin: 0 0 4px; }
+.format-tools select { font-size: 13px; padding: 3px 6px; background: rgba(255,255,255,.6); }
+.format-tools .fmt { min-width: 30px; font-size: 15px; padding: 4px 7px; display: inline-flex; flex-direction: column; align-items: center; }
+.format-tools .fmt.active { background: #fff; box-shadow: 0 0 0 1px var(--line); }
+.fmt-a { font-weight: 700; line-height: 1; }
+.fmt-hl-icon { font-size: 13px; line-height: 1.1; font-weight: 600; }
+.fmt-bar { display: block; width: 16px; height: 3px; border-radius: 2px; background: #1f1f1f; margin-top: 2px; }
+.fmt-pop { position: absolute; z-index: 30; background: #fff; border-radius: 10px; padding: 8px; display: flex; gap: 6px;
+  flex-wrap: wrap; max-width: 240px; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+.fmt-pop button { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(0,0,0,.1); padding: 0; }
+.fmt-pop button.none { background: #fff; position: relative; overflow: hidden; }
+.fmt-pop button.none::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: #d32f2f; transform: rotate(45deg); }
+
 /* Note body: one row per line */
 .text-tools { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 4px; }
 .text-tools .tool { font-size: 13px; padding: 4px 9px; background: rgba(255,255,255,.5); }

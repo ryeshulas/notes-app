@@ -60,6 +60,22 @@
       </header>
       <div class="colors" id="note-colors"></div>
       <div id="editor-scroll">
+        <div class="format-tools">
+          <select id="fmt-font" title="Font">
+            <option value="">Default font</option>
+            <option value="serif">Serif</option>
+            <option value="mono">Monospace</option>
+            <option value="hand">Handwriting</option>
+            <option value="round">Rounded</option>
+          </select>
+          <button data-fmt="b" class="tool fmt" title="Bold (Ctrl+B)"><b>B</b></button>
+          <button data-fmt="i" class="tool fmt" title="Italic (Ctrl+I)"><i>I</i></button>
+          <button data-fmt="u" class="tool fmt" title="Underline (Ctrl+U)"><u>U</u></button>
+          <button data-fmt="x" class="tool fmt" title="Strikethrough (Ctrl+Shift+X)"><s>S</s></button>
+          <button id="fmt-color" class="tool fmt" title="Text color"><span class="fmt-a">A</span><span id="fmt-color-bar" class="fmt-bar"></span></button>
+          <button id="fmt-hl" class="tool fmt" title="Highlight"><span class="fmt-hl-icon">ab</span><span id="fmt-hl-bar" class="fmt-bar" style="background:#fff176"></span></button>
+        </div>
+        <div id="fmt-pop" class="fmt-pop hidden"></div>
         <div class="text-tools">
           <button data-line="ul" class="tool" title="Bulleted list">• List</button>
           <button data-line="ol" class="tool" title="Numbered list">1. List</button>

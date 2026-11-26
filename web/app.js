@@ -717,7 +717,58 @@ $('#ink-undo').addEventListener('click', () => ink.undoLast());
 $('#ink-more').addEventListener('click', () => { ink.height += 500; ink.resize(); ink.onChange?.(); });
 
 // ---------------------------------------------------------------- editor
-const body = BodyEditor.create($('#note-body'), { onChange: () => editor.queueSave() });
+const body = BodyEditor.create($('#note-body'), {
+  onChange: () => editor.queueSave(),
+  onSelectionStyle: (st) => showFormatState(st),
+});
+
+// ---- formatting bar ----
+const TEXT_COLORS = [null, '#d32f2f', '#e67700', '#2e7d32', '#1e5bd8', '#8e24aa', '#6d4c41', '#757575'];
+const HIGHLIGHTS = [null, '#fff176', '#b9f6a8', '#a8dcff', '#ffc1d3', '#ffd8a8'];
+let lastColor = '#d32f2f';
+let lastHighlight = '#fff176';
+
+function showFormatState(st) {
+  document.querySelectorAll('.format-tools [data-fmt]').forEach((b) => b.classList.toggle('active', !!st[b.dataset.fmt]));
+  $('#fmt-font').value = st.f || '';
+  $('#fmt-color-bar').style.background = st.c || '#1f1f1f';
+}
+function keepFocus(el) { el.addEventListener('pointerdown', (e) => e.preventDefault()); }
+
+document.querySelectorAll('.format-tools [data-fmt]').forEach((b) => {
+  keepFocus(b);
+  b.addEventListener('click', () => body.format(b.dataset.fmt, 1));
+});
+$('#fmt-font').addEventListener('change', (e) => body.format('f', e.target.value || null));
+
+function openPalette(anchor, colors, onPick) {
+  const pop = $('#fmt-pop');
+  if (!pop.classList.contains('hidden') && pop.dataset.for === anchor.id) { pop.classList.add('hidden'); return; }
+  pop.textContent = '';
+  pop.dataset.for = anchor.id;
+  for (const c of colors) {
+    const b = document.createElement('button');
+    if (c) b.style.background = c; else { b.className = 'none'; b.title = anchor.id === 'fmt-hl' ? 'No highlight' : 'Default color'; }
+    keepFocus(b);
+    b.addEventListener('click', () => { pop.classList.add('hidden'); onPick(c); });
+    pop.append(b);
+  }
+  const host = $('#editor-scroll').getBoundingClientRect();
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = `${Math.max(0, Math.min(r.left - host.left, host.width - 250))}px`;
+  pop.style.top = `${r.bottom - host.top + $('#editor-scroll').scrollTop + 4}px`;
+  pop.classList.remove('hidden');
+}
+keepFocus($('#fmt-color'));
+keepFocus($('#fmt-hl'));
+$('#fmt-color').addEventListener('click', () => openPalette($('#fmt-color'), TEXT_COLORS, (c) => { if (c) lastColor = c; body.format('c', c); }));
+$('#fmt-hl').addEventListener('click', () => openPalette($('#fmt-hl'), HIGHLIGHTS, (c) => {
+  if (c) { lastHighlight = c; $('#fmt-hl-bar').style.background = c; }
+  body.format('h', c);
+}));
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('#fmt-pop, #fmt-color, #fmt-hl')) $('#fmt-pop').classList.add('hidden');
+});
 
 const editor = {
   saveTimer: null,

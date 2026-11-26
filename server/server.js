@@ -186,7 +186,7 @@ async function handleSync(req, res) {
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json',
-  '.ico': 'image/x-icon',
+  '.ico': 'image/x-icon', '.woff2': 'font/woff2',
 };
 
 function serveStatic(req, res, pathname) {
