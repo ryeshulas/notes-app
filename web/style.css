@@ -109,7 +109,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 .note-body .txt[data-placeholder]:empty::before { content: attr(data-placeholder); color: var(--muted); }
 .ink-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; position: sticky; top: 0; z-index: 1;
   background: rgba(255,255,255,.7); backdrop-filter: blur(6px); border-radius: 10px; padding: 4px 6px; margin: 6px 0; }
-.tool { background: none; border: 0; padding: 5px 8px; border-radius: 6px; font-size: 15px; }
+.tool { background: none; border: 0; padding: 5px 8px; border-radius: 6px; font-size: 15px; line-height: 1; vertical-align: middle; }
+.tool svg { display: block; }
 .tool.active { background: #fff; box-shadow: 0 0 0 1px var(--line); }
 .ink-tools select { padding: 3px 6px; font-size: 13px; }
 .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
@@ -129,26 +130,33 @@ body.popout #back, body.popout #note-popout { display: none; }
 html, body { overflow-x: hidden; max-width: 100%; }
 #app { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 
-/* Collapsible folder menu */
-body.sidebar-collapsed #app { grid-template-columns: 1fr; }
-body.sidebar-collapsed #sidebar { display: none; }
+/* Folder menu.
+   Pinned (default on laptops): a column beside the notes; the ☰ button hides/shows it.
+   Not pinned, or on phones: a slide-out drawer opened with ☰. */
 #scrim { position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 9; }
-
-/* Medium screens (small laptops, tablets in portrait, phones in landscape): menu becomes a slide-out drawer */
-@media (max-width: 1100px) {
-  #app, body.sidebar-collapsed #app { grid-template-columns: 1fr; }
-  #sidebar, body.sidebar-collapsed #sidebar { display: flex; position: fixed; top: 0; bottom: 0; left: 0;
-    width: min(280px, 80vw); z-index: 10; transform: translateX(-105%); transition: transform .2s;
-    box-shadow: 6px 0 24px rgba(0,0,0,.2); }
-  #sidebar.open { transform: none; }
-  #editor { width: min(640px, 75%); }
-}
+body.menu-pinned.sidebar-collapsed #app { grid-template-columns: 1fr; }
+body.menu-pinned.sidebar-collapsed #sidebar { display: none; }
+body:not(.menu-pinned) #app { grid-template-columns: 1fr; }
+body:not(.menu-pinned) #sidebar {
+  display: flex; position: fixed; top: 0; bottom: 0; left: 0; width: min(280px, 80vw); z-index: 10;
+  transform: translateX(-105%); transition: transform .2s; box-shadow: 6px 0 24px rgba(0,0,0,.2); }
+body:not(.menu-pinned) #sidebar.open { transform: none; }
+.sidebar-foot { flex-wrap: wrap; }
+.pin-menu { flex-basis: 100%; text-align: left; background: none; border: 0; color: var(--muted); font-size: 13px; padding: 5px 8px; border-radius: 6px; white-space: nowrap; }
+.pin-menu.on { color: var(--text); background: rgba(0,0,0,.06); }
+@media (max-width: 1100px) { #editor { width: min(640px, 75%); } }
 
 .mobile-only { display: none; }
 .fab { position: fixed; right: 20px; bottom: 24px; width: 58px; height: 58px; border-radius: 50%; border: 0;
   background: var(--accent); color: #fff; font-size: 24px; box-shadow: 0 6px 18px rgba(0,0,0,.25); z-index: 3; }
 
 @media (max-width: 760px) {
+  #app, body.menu-pinned #app, body.menu-pinned.sidebar-collapsed #app { grid-template-columns: 1fr; }
+  #sidebar, body.menu-pinned #sidebar, body.menu-pinned.sidebar-collapsed #sidebar {
+    display: flex; position: fixed; top: 0; bottom: 0; left: 0; width: min(280px, 80vw); z-index: 10;
+    transform: translateX(-105%); transition: transform .2s; box-shadow: 6px 0 24px rgba(0,0,0,.2); }
+  #sidebar.open { transform: none !important; }
+  .pin-menu { display: none; }
   #list-pane { padding: 0 12px 100px; }
   /* Phone: one note per row, like a list */
   .grid { grid-template-columns: 1fr; gap: 12px; }

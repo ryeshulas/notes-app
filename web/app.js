@@ -22,10 +22,22 @@ function showFatal(msg) {
     el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:99;background:#b3261e;color:#fff;padding:12px 14px;border-radius:10px;font:14px system-ui';
     document.body.append(el);
   }
-  el.textContent = `Something went wrong: ${msg}. Try closing and reopening the app.`;
+  el.textContent = `Something went wrong: ${msg}. If it keeps happening, send this message to Claude. `;
+  const close = document.createElement('button');
+  close.textContent = 'Dismiss';
+  close.style.cssText = 'margin-left:8px;background:#fff;color:#b3261e;border:0;border-radius:6px;padding:3px 10px;font-weight:600';
+  close.onclick = () => el.remove();
+  el.append(close);
+  console.error(msg);
 }
-window.addEventListener('error', (e) => showFatal(e.message));
-window.addEventListener('unhandledrejection', (e) => showFatal(e.reason?.message || String(e.reason)));
+// Harmless browser warnings that aren't real failures.
+const BENIGN = [/ResizeObserver loop/i, /Script error\.?$/i, /AbortError/i, /NetworkError|Failed to fetch|Load failed/i];
+const isBenign = (msg) => !msg || BENIGN.some((r) => r.test(msg));
+window.addEventListener('error', (e) => { if (!isBenign(e.message)) showFatal(e.message); });
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = e.reason?.message || String(e.reason);
+  if (!isBenign(msg) && e.reason?.name !== 'AbortError') showFatal(msg);
+});
 const params = new URLSearchParams(location.search);
 const isPopout = params.has('popout');
 
@@ -276,7 +288,7 @@ function renderSidebar() {
       right.append(more);
     }
     b.append(name, right);
-    b.addEventListener('click', () => { state.view = it.id; setDrawer(false); renderSidebar(); renderList(); });
+    b.addEventListener('click', () => { state.view = it.id; if (drawerMode()) setDrawer(false); renderSidebar(); renderList(); });
     nav.append(b);
   }
   // folder picker in the editor
@@ -317,9 +329,28 @@ function viewTitle() {
   return state.records.get(keyOf('folder', state.view))?.data.name || '';
 }
 
+// Search: every word must appear (in any order). Wildcards: * = any letters, ? = one letter.
+// "Quoted phrases" must appear as written.  e.g.  plumb*  wax gu?rd  "water heater"
+function buildMatcher(query) {
+  const terms = [];
+  const re = /"([^"]+)"|(\S+)/g;
+  let m;
+  while ((m = re.exec(query))) terms.push(m[1] ?? m[2]);
+  if (!terms.length) return null;
+  const regexes = terms.map((t) => {
+    const pattern = t.split('').map((ch) => {
+      if (ch === '*') return '\\S*';
+      if (ch === '?') return '\\S';
+      return ch.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }).join('');
+    return new RegExp(pattern, 'i');
+  });
+  return (text) => regexes.every((r) => r.test(text));
+}
+
 function visibleNotes() {
   const folderIds = new Set(folders().map((f) => f.id));
-  const q = state.query.trim().toLowerCase();
+  const match = buildMatcher(state.query.trim());
   return notes().filter((n) => {
     if (state.view === 'trash') { if (!n.deleted || n.data.purged) return false; }
     else {
@@ -327,7 +358,7 @@ function visibleNotes() {
       if (state.view === 'inbox' && n.data.folder && folderIds.has(n.data.folder)) return false;
       if (state.view !== 'all' && state.view !== 'inbox' && n.data.folder !== state.view) return false;
     }
-    if (q && !`${n.data.title} ${n.data.text}`.toLowerCase().includes(q)) return false;
+    if (match && !match(`${n.data.title || ''}\n${n.data.text || ''}`)) return false;
     return true;
   }).sort((a, b) => (b.data.pinned - a.data.pinned) || (b.updated_at - a.updated_at));
 }
@@ -348,6 +379,7 @@ function renderList() {
   grid.textContent = '';
   const list = visibleNotes();
   $('#empty').classList.toggle('hidden', list.length > 0);
+  $('#empty').textContent = state.query.trim() ? 'No notes match your search.' : 'No notes here yet.';
   const hasPinned = state.view !== 'trash' && list.some((n) => n.data.pinned);
   let section = null;
   for (const n of list) {
@@ -409,20 +441,39 @@ function thumbnail(strokes) {
 }
 
 $('#search').addEventListener('input', (e) => { state.query = e.target.value; renderList(); });
-// Folder menu: a slide-out drawer on narrower screens, a collapsible column on wide ones.
-const drawerMode = matchMedia('(max-width: 1100px)');
+// Folder menu. Pinned = a column beside the notes (default on laptops); otherwise a slide-out drawer.
+const phoneWidth = matchMedia('(max-width: 760px)');
+const isPinned = () => document.body.classList.contains('menu-pinned');
+const drawerMode = () => !isPinned() || phoneWidth.matches;
 function setDrawer(open) {
   $('#sidebar').classList.toggle('open', open);
   $('#scrim').classList.toggle('hidden', !open);
 }
+function applyPinned(pinned) {
+  document.body.classList.toggle('menu-pinned', pinned);
+  $('#pin-menu').classList.toggle('on', pinned);
+  $('#pin-menu').textContent = pinned ? '📌 Menu kept open' : '📌 Keep open';
+  if (pinned) document.body.classList.remove('sidebar-collapsed');
+  setDrawer(false);
+}
 $('#menu-btn').addEventListener('click', () => {
-  if (drawerMode.matches) { setDrawer(!$('#sidebar').classList.contains('open')); return; }
+  if (drawerMode()) { setDrawer(!$('#sidebar').classList.contains('open')); return; }
   const collapsed = document.body.classList.toggle('sidebar-collapsed');
   localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
 });
+$('#pin-menu').addEventListener('click', () => {
+  const pinned = !isPinned();
+  localStorage.setItem('menuPinned', pinned ? '1' : '0');
+  applyPinned(pinned);
+});
 $('#scrim').addEventListener('click', () => setDrawer(false));
-drawerMode.addEventListener('change', () => setDrawer(false));
-if (localStorage.getItem('sidebarCollapsed') === '1') document.body.classList.add('sidebar-collapsed');
+phoneWidth.addEventListener('change', () => setDrawer(false));
+{
+  // Default: kept open on laptops/desktops (mouse or trackpad), a drawer on touch devices.
+  const saved = localStorage.getItem('menuPinned');
+  applyPinned(saved === null ? matchMedia('(pointer: fine)').matches : saved === '1');
+  if (isPinned() && localStorage.getItem('sidebarCollapsed') === '1') document.body.classList.add('sidebar-collapsed');
+}
 $('#new-note').addEventListener('click', () => newNote());
 $('#fab').addEventListener('click', () => newNote());
 

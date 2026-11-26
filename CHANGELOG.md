@@ -2,6 +2,13 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.7.0
+- "📌 Keep open" option at the bottom of the folder menu keeps the menu as a column beside your notes
+  (on by default on laptops/desktops). ☰ still hides/shows it. Phones always use the slide-out menu.
+- Wildcard search: every word must match; `*` = any letters, `?` = one letter, "quotes" for exact phrases.
+- Eraser button now shows an eraser icon.
+- Harmless browser warnings no longer pop up as errors; real errors can be dismissed.
+
 ## 0.6.0
 - Indented sub-lists: Tab / Shift+Tab, or the ⇥ / ⇤ buttons. Sub-levels number as 1. → a. → i.
   and bullets as • → ◦ → ▪. Enter on an empty sub-item (or Backspace at its start) steps back out a level.

@@ -31,6 +31,7 @@
       <button id="add-folder" class="link">+ New folder</button>
       <div id="version" class="version">Version __APP_VERSION__</div>
       <div class="sidebar-foot">
+        <button id="pin-menu" class="pin-menu" title="Keep the folder menu open">📌 Keep open</button>
         <span id="sync-status" class="sync" title="Sync status">●</span>
         <button id="logout" class="link">Sign out</button>
       </div>
@@ -39,7 +40,7 @@
     <main id="list-pane">
       <header class="bar">
         <button id="menu-btn" class="icon-btn" aria-label="Show or hide folders" title="Show or hide folders">☰</button>
-        <input id="search" type="search" placeholder="Search notes">
+        <input id="search" type="search" placeholder="Search notes (use * and ? as wildcards)" title="All words must match. * = any letters, ? = one letter, &quot;quotes&quot; for exact phrases">
         <button id="new-note" class="primary">+ New</button>
       </header>
       <h2 id="list-title"></h2>
@@ -71,7 +72,7 @@
         <div class="ink-tools">
           <button data-tool="pen" class="tool active" title="Pen">✒️</button>
           <button data-tool="highlighter" class="tool" title="Highlighter">🖍️</button>
-          <button data-tool="eraser" class="tool" title="Eraser (removes whole strokes)">⌫</button>
+          <button data-tool="eraser" class="tool" title="Eraser (removes whole strokes)"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6a2 2 0 0 1 2.8 0l3.4 3.4a2 2 0 0 1 0 2.8L12.3 19H20a1 1 0 1 1 0 2H8.6a2 2 0 0 1-1.4-.6l-4.6-4.6a2 2 0 0 1 0-2.8Z" fill="#f28da0"/><path d="M8.4 10.4l6.2 6.2L12.3 19H8.6l-4.6-4.6Z" fill="#fff" stroke="#c45a70" stroke-width="1.2" stroke-linejoin="round"/><path d="M15.2 3.6a2 2 0 0 1 2.8 0l3.4 3.4a2 2 0 0 1 0 2.8L12.3 19H8.6a2 2 0 0 1-1.4-.6l-4.6-4.6a2 2 0 0 1 0-2.8Z" fill="none" stroke="#9c3a52" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
           <span class="sep"></span>
           <span id="ink-colors"></span>
           <span class="sep"></span>
