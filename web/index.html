@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5c84c">
   <title>Notes</title>
   <link rel="manifest" href="/manifest.webmanifest">
@@ -24,6 +24,7 @@
 
   <!-- Main app -->
   <section id="app" class="screen hidden">
+    <div id="scrim" class="hidden"></div>
     <aside id="sidebar">
       <div class="brand"><img src="/icon.svg" alt="" width="24" height="24"> Notes</div>
       <nav id="folders"></nav>
@@ -36,7 +37,7 @@
 
     <main id="list-pane">
       <header class="bar">
-        <button id="menu-btn" class="icon-btn mobile-only" aria-label="Folders">☰</button>
+        <button id="menu-btn" class="icon-btn" aria-label="Show or hide folders" title="Show or hide folders">☰</button>
         <input id="search" type="search" placeholder="Search notes">
         <button id="new-note" class="primary">+ New</button>
       </header>

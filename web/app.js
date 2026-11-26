@@ -261,7 +261,7 @@ function renderSidebar() {
       right.append(more);
     }
     b.append(name, right);
-    b.addEventListener('click', () => { state.view = it.id; $('#sidebar').classList.remove('open'); renderSidebar(); renderList(); });
+    b.addEventListener('click', () => { state.view = it.id; setDrawer(false); renderSidebar(); renderList(); });
     nav.append(b);
   }
   // folder picker in the editor
@@ -378,7 +378,20 @@ function thumbnail(strokes) {
 }
 
 $('#search').addEventListener('input', (e) => { state.query = e.target.value; renderList(); });
-$('#menu-btn').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+// Folder menu: a slide-out drawer on narrower screens, a collapsible column on wide ones.
+const drawerMode = matchMedia('(max-width: 1100px)');
+function setDrawer(open) {
+  $('#sidebar').classList.toggle('open', open);
+  $('#scrim').classList.toggle('hidden', !open);
+}
+$('#menu-btn').addEventListener('click', () => {
+  if (drawerMode.matches) { setDrawer(!$('#sidebar').classList.contains('open')); return; }
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+});
+$('#scrim').addEventListener('click', () => setDrawer(false));
+drawerMode.addEventListener('change', () => setDrawer(false));
+if (localStorage.getItem('sidebarCollapsed') === '1') document.body.classList.add('sidebar-collapsed');
 $('#new-note').addEventListener('click', () => newNote());
 $('#fab').addEventListener('click', () => newNote());
 
