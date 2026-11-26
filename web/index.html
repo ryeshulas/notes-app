@@ -59,7 +59,13 @@
       </header>
       <div class="colors" id="note-colors"></div>
       <div id="editor-scroll">
-        <textarea id="note-text" placeholder="Type here…" rows="2"></textarea>
+        <div class="text-tools">
+          <button data-line="ul" class="tool" title="Bulleted list">• List</button>
+          <button data-line="ol" class="tool" title="Numbered list">1. List</button>
+          <button data-line="todo" class="tool" title="Checklist">☑ Checklist</button>
+          <button id="clear-done" class="tool" title="Remove checked items">Clear checked</button>
+        </div>
+        <div id="note-body" class="note-body"></div>
         <div class="ink-tools">
           <button data-tool="pen" class="tool active" title="Pen">✒️</button>
           <button data-tool="highlighter" class="tool" title="Highlighter">🖍️</button>
@@ -80,6 +86,7 @@
 
   <div id="update-banner" class="update-banner hidden">A new version is available. <button id="update-reload">Update now</button></div>
 
+  <script src="/body-editor.js?v=__APP_VERSION__"></script>
   <script src="/app.js?v=__APP_VERSION__"></script>
 </body>
 </html>

@@ -367,6 +367,8 @@ function renderList() {
     h.textContent = n.data.title || (n.data.text ? n.data.text.split('\n')[0].slice(0, 60) : strokes.length ? 'Drawing' : 'Untitled');
     if (!n.data.title) h.classList.add('untitled');
     const m = document.createElement('div'); m.className = 'meta'; m.textContent = noteDate(n.updated_at);
+    const todos = (n.data.blocks || []).filter((b) => b.t === 'todo');
+    if (todos.length) m.textContent += ` · ${todos.filter((b) => b.d).length}/${todos.length} done`;
     card.append(h, m);
     // Without a title the first line is the heading, so the preview starts after it.
     const preview = n.data.title ? n.data.text : (n.data.text || '').split('\n').slice(1).join('\n').trim();
@@ -664,33 +666,36 @@ $('#ink-undo').addEventListener('click', () => ink.undoLast());
 $('#ink-more').addEventListener('click', () => { ink.height += 500; ink.resize(); ink.onChange?.(); });
 
 // ---------------------------------------------------------------- editor
+const body = BodyEditor.create($('#note-body'), { onChange: () => editor.queueSave() });
+
 const editor = {
   saveTimer: null,
   dirty: false,
   busy() {
     return this.dirty || ink.current || ink.erasing ||
-      document.activeElement === $('#note-text') || document.activeElement === $('#note-title');
+      body.focused() || document.activeElement === $('#note-title');
   },
   load(id) {
     const n = getNote(id);
     if (!n) return;
     const d = n.data;
     $('#note-title').value = d.title || '';
-    $('#note-text').value = d.text || '';
+    body.load(BodyEditor.blocksForNote(d));
     $('#note-folder').value = d.folder && state.records.get(keyOf('folder', d.folder)) ? d.folder : '';
     $('#note-pin').classList.toggle('on', !!d.pinned);
     $('#editor').style.setProperty('--c', NOTE_COLORS[d.color] || NOTE_COLORS.yellow);
     document.querySelectorAll('#note-colors .swatch').forEach((s) => s.classList.toggle('active', s.dataset.color === (d.color || 'yellow')));
-    autosize();
     ink.load(d.ink);
     if (isPopout) document.title = d.title || 'Note';
   },
   collect() {
     const n = getNote(state.openId);
+    const blocks = body.blocks();
     return {
       ...n.data,
       title: $('#note-title').value,
-      text: $('#note-text').value,
+      blocks,
+      text: BodyEditor.textFromBlocks(blocks),
       folder: $('#note-folder').value || null,
       ink: ink.data(),
     };
@@ -715,8 +720,13 @@ const editor = {
 };
 ink.onChange = () => editor.queueSave(600);
 
-function autosize() { const t = $('#note-text'); t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }
-$('#note-text').addEventListener('input', () => { autosize(); editor.queueSave(); });
+// List buttons. pointerdown + preventDefault keeps the keyboard open on phones.
+document.querySelectorAll('.text-tools [data-line]').forEach((b) => {
+  b.addEventListener('pointerdown', (e) => e.preventDefault());
+  b.addEventListener('click', () => body.setType(b.dataset.line));
+});
+$('#clear-done').addEventListener('pointerdown', (e) => e.preventDefault());
+$('#clear-done').addEventListener('click', () => body.clearDone());
 $('#note-title').addEventListener('input', () => editor.queueSave());
 $('#note-folder').addEventListener('change', () => editor.queueSave(0));
 $('#note-pin').addEventListener('click', () => {
@@ -775,7 +785,7 @@ function openNote(id, { pushHistory = true, focus } = {}) {
   if (pushHistory && !isPopout && !history.state?.note) history.pushState({ note: id }, '');
   else if (pushHistory && !isPopout) history.replaceState({ note: id }, '');
   renderList();
-  if (focus === 'text') $('#note-text').focus();
+  if (focus === 'text') body.focusEnd();
 }
 
 function closeEditor(fromPopstate = false) {
@@ -798,7 +808,7 @@ function newNote(mode = 'text') {
 }
 
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && state.openId && document.activeElement?.tagName !== 'TEXTAREA' && document.activeElement?.tagName !== 'INPUT') {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && state.openId && document.activeElement?.tagName !== 'INPUT' && !body.focused()) {
     e.preventDefault(); ink.undoLast();
   }
   if (e.key === 'Escape' && state.openId && !isPopout) closeEditor();
