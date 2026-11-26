@@ -46,12 +46,15 @@ const idb = {
   db: null,
   open() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('notes-app', 1);
-      req.onupgradeneeded = () => {
+      const req = indexedDB.open('notes-app', 2);
+      req.onupgradeneeded = (e) => {
         const db = req.result;
-        db.createObjectStore('records', { keyPath: 'key' });
-        db.createObjectStore('outbox', { keyPath: 'key' });
-        db.createObjectStore('meta', { keyPath: 'k' });
+        if (e.oldVersion < 1) {
+          db.createObjectStore('records', { keyPath: 'key' });
+          db.createObjectStore('outbox', { keyPath: 'key' });
+          db.createObjectStore('meta', { keyPath: 'k' });
+        }
+        if (e.oldVersion < 2) db.createObjectStore('files', { keyPath: 'id' });   // images, kept for offline use
       };
       req.onsuccess = () => { this.db = req.result; resolve(); };
       req.onerror = () => reject(req.error);
@@ -118,6 +121,64 @@ async function save(kind, id, data, deleted = false) {
   return rec;
 }
 
+// ---------------------------------------------------------------- image files
+// Images are saved on the device first (so they work offline), uploaded to the server on sync,
+// and downloaded once on other devices.
+const files = {
+  urls: new Map(),
+  async put(id, blob) {
+    await idb.put('files', { id, blob, type: blob.type, pending: true });
+    this.urls.set(id, URL.createObjectURL(blob));
+    scheduleSync(500);
+  },
+  async url(id) {
+    if (!id) return null;
+    if (this.urls.has(id)) return this.urls.get(id);
+    const rec = await idb.get('files', id);
+    if (rec) { const u = URL.createObjectURL(rec.blob); this.urls.set(id, u); return u; }
+    if (!state.token) return null;
+    try {
+      const res = await fetch(`/api/files/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${state.token}` } });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      await idb.put('files', { id, blob, type: blob.type, pending: false });
+      const u = URL.createObjectURL(blob);
+      this.urls.set(id, u);
+      return u;
+    } catch { return null; }
+  },
+  async uploadPending() {
+    const all = await idb.all('files');
+    for (const f of all.filter((x) => x.pending)) {
+      const res = await fetch(`/api/files/${encodeURIComponent(f.id)}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${state.token}`, 'Content-Type': f.type || 'image/jpeg' },
+        body: f.blob,
+      });
+      if (res.status === 401) throw Object.assign(new Error('Not signed in'), { status: 401 });
+      if (res.ok) await idb.put('files', { ...f, pending: false });
+    }
+  },
+};
+
+// Shrink big photos before saving (max 2000px on the long side).
+async function prepareImage(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(file));
+  const max = 2000;
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  const keepPng = file.type === 'image/png' && file.size < 1.5 * 1024 * 1024 && k === 1;
+  if (keepPng) return { blob: file, w, h };
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0, w, h);
+  const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
+  return { blob, w, h };
+}
+
 // ---------------------------------------------------------------- sync
 let syncTimer = null;
 function scheduleSync(ms) { clearTimeout(syncTimer); syncTimer = setTimeout(sync, ms); }
@@ -141,6 +202,7 @@ async function sync() {
     try {
       let more = true;
       const changedKeys = [];
+      await files.uploadPending().catch((e) => { if (e.status === 401) throw e; });
       let outbox = await idb.all('outbox');
       while (more) {
         const since = await meta.get('since', 0);
@@ -401,11 +463,14 @@ function renderList() {
     const m = document.createElement('div'); m.className = 'meta'; m.textContent = noteDate(n.updated_at);
     const todos = (n.data.blocks || []).filter((b) => b.t === 'todo');
     if (todos.length) m.textContent += ` · ${todos.filter((b) => b.d).length}/${todos.length} done`;
+    const canvasItems = n.data.ink?.items || [];
+    const imgCount = canvasItems.filter((it) => it.k === 'img').length;
+    if (imgCount) m.textContent += ` · 🖼 ${imgCount}`;
     card.append(h, m);
     // Without a title the first line is the heading, so the preview starts after it.
     const preview = n.data.title ? n.data.text : (n.data.text || '').split('\n').slice(1).join('\n').trim();
     if (preview) { const p = document.createElement('p'); p.textContent = preview; card.append(p); }
-    if (strokes.length) card.append(thumbnail(strokes));
+    if (strokes.length || canvasItems.length) card.append(thumbnail(strokes, canvasItems));
     if (state.view === 'trash') {
       const row = document.createElement('div'); row.className = 'restore';
       const r = document.createElement('button'); r.textContent = 'Restore';
@@ -424,11 +489,12 @@ function renderList() {
   }
 }
 
-function thumbnail(strokes) {
+function thumbnail(strokes, items = []) {
   const c = document.createElement('canvas');
   const cssW = 320;
   let maxY = 0;
   for (const s of strokes) for (let i = 1; i < s.p.length; i += 3) maxY = Math.max(maxY, s.p[i]);
+  for (const it of items) maxY = Math.max(maxY, it.y + (it.h || (it.size || 28) * 1.3));
   const s = cssW / INK_W;
   const h = Math.min(maxY + 20, 600) * s;
   const dpr = window.devicePixelRatio || 1;
@@ -436,7 +502,26 @@ function thumbnail(strokes) {
   c.style.width = `${cssW}px`;
   const ctx = c.getContext('2d');
   ctx.setTransform(dpr * s, 0, 0, dpr * s, 0, 0);
+  // images first (underneath), then ink, then labels on top
+  for (const it of items.filter((x) => x.k === 'img')) {
+    ctx.fillStyle = 'rgba(0,0,0,.07)';
+    ctx.fillRect(it.x, it.y, it.w, it.h);
+    files.url(it.file).then((u) => {
+      if (!u) return;
+      const img = new Image();
+      img.onload = () => { ctx.save(); ctx.drawImage(img, it.x, it.y, it.w, it.h); ctx.restore(); strokes.forEach((st) => drawStroke(ctx, st)); drawLabels(); };
+      img.src = u;
+    });
+  }
   strokes.forEach((st) => drawStroke(ctx, st));
+  function drawLabels() {
+    for (const it of items.filter((x) => x.k === 'text')) {
+      ctx.fillStyle = it.st?.c || '#1f1f1f';
+      ctx.font = `${it.st?.b ? '700 ' : ''}${it.size || 28}px system-ui, sans-serif`;
+      (it.s || '').split('\n').forEach((line, i) => ctx.fillText(line, it.x + 4, it.y + (it.size || 28) * (1 + i * 1.2)));
+    }
+  }
+  drawLabels();
   return c;
 }
 
@@ -540,6 +625,7 @@ const ink = {
 
   load(inkData) {
     this.strokes = (inkData?.strokes || []).slice();
+    canvasItems.load(inkData?.items || []);
     // At least enough drawing space to fill the screen below the toolbar.
     const w = this.canvas.parentElement.clientWidth || INK_W;
     const fill = Math.round((window.innerHeight * 0.8) / (w / INK_W));
@@ -548,7 +634,7 @@ const ink = {
     this.resize();
   },
 
-  data() { return { h: this.height, strokes: this.strokes }; },
+  data() { return { h: this.height, strokes: this.strokes, items: canvasItems.items() }; },
 
   resize() {
     const cssW = this.canvas.parentElement.clientWidth;
@@ -559,6 +645,7 @@ const ink = {
     this.canvas.style.height = `${cssH}px`;
     for (const c of [this.canvas, this.base]) { c.width = Math.round(cssW * dpr); c.height = Math.round(cssH * dpr); }
     this.renderBase();
+    canvasItems.relayout();
   },
 
   ctxFor(c) {
@@ -626,6 +713,8 @@ const ink = {
       return;
     }
     if (e.button !== 0 && e.button !== 5 && e.pointerType === 'mouse') return;
+    if (this.tool === 'text') { e.preventDefault(); const [x, y] = this.point(e); canvasItems.addLabel(x, y); return; }
+    if (this.tool === 'select') { canvasItems.deselect(); return; }
     e.preventDefault();
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
     if (e.pointerType === 'pen') this.penDown = true;
@@ -686,16 +775,61 @@ const ink = {
   },
 };
 
+const canvasItems = CanvasItems.create($('#ink-items'), {
+  scale: () => ink.scale(),
+  onChange: () => {
+    const low = canvasItems.lowestPoint();
+    if (low > ink.height - 100) { ink.height = low + 300; ink.resize(); }
+    ink.onChange?.();
+  },
+  fileURL: (id) => files.url(id),
+});
+
+function setTool(name) { document.querySelector(`.ink-tools [data-tool="${name}"]`)?.click(); }
+
+// Add images: saved on this device right away, uploaded on the next sync.
+$('#add-image').addEventListener('click', () => $('#image-input').click());
+$('#image-input').addEventListener('change', async (e) => {
+  const list = [...e.target.files];
+  e.target.value = '';
+  if (!list.length || !state.openId) return;
+  // place it where the user is looking
+  const sc = $('#editor-scroll');
+  const canvasTop = ink.canvas.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+  let y = Math.max(20, (20 - canvasTop) / ink.scale() + 20);
+  for (const file of list) {
+    try {
+      const { blob, w, h } = await prepareImage(file);
+      const id = uuid();
+      await files.put(id, blob);
+      const width = Math.min(700, w * (1 / ink.scale()) * 0.9, 920);
+      const height = width * (h / w);
+      canvasItems.addImage(id, width, height, 40, y);
+      y += height + 20;
+    } catch (err) {
+      alert(`Couldn't add that image: ${err.message || err}`);
+    }
+  }
+  setTool('select');
+});
+
 ink.canvas.addEventListener('pointerdown', (e) => ink.down(e));
 ink.canvas.addEventListener('pointermove', (e) => ink.move(e));
 ink.canvas.addEventListener('pointerup', (e) => ink.up(e));
 ink.canvas.addEventListener('pointercancel', (e) => ink.up(e));
 ink.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-new ResizeObserver(() => { if (state.openId) ink.resize(); }).observe($('#ink-wrap'));
+let inkWidth = 0;
+new ResizeObserver((entries) => {
+  const w = Math.round(entries[0].contentRect.width);
+  if (w === inkWidth) return;
+  inkWidth = w;
+  if (state.openId) requestAnimationFrame(() => ink.resize());
+}).observe($('#ink-wrap'));
 
 document.querySelectorAll('.ink-tools [data-tool]').forEach((b) => b.addEventListener('click', () => {
   ink.tool = b.dataset.tool;
   document.querySelectorAll('.ink-tools [data-tool]').forEach((x) => x.classList.toggle('active', x === b));
+  canvasItems.setMode(ink.tool === 'select' || ink.tool === 'text' ? ink.tool : 'pen');
   localStorage.setItem('inkTool', ink.tool);
 }));
 (function buildInkColors() {
@@ -774,7 +908,7 @@ const editor = {
   saveTimer: null,
   dirty: false,
   busy() {
-    return this.dirty || ink.current || ink.erasing ||
+    return this.dirty || ink.current || ink.erasing || canvasItems.busy() ||
       body.focused() || document.activeElement === $('#note-title');
   },
   load(id) {

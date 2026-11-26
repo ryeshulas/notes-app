@@ -145,7 +145,39 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 .ink-swatch.active { border-color: #fff; box-shadow: 0 0 0 2px #333; }
 #ink-wrap { background: rgba(255,255,255,.35); border-radius: 8px;
   background-image: radial-gradient(rgba(0,0,0,.12) 1px, transparent 1px); background-size: 24px 24px; }
-#ink { display: block; width: 100%; touch-action: none; }
+/* Layers: images (bottom) → ink → labels (top) */
+#ink-wrap { position: relative; isolation: isolate; }
+#ink { display: block; width: 100%; touch-action: none; position: relative; z-index: 1; }
+#ink-wrap.select-mode #ink { pointer-events: none; }
+.tool-t { font-family: 'NotesSerif', Georgia, serif; font-weight: 700; font-size: 17px; padding: 0 2px; }
+
+/* Labels and images on the drawing area */
+.ink-items { position: absolute; inset: 0; pointer-events: none; }
+.ink-items .item { position: absolute; }
+.ink-items .item-img { z-index: 0; }
+.ink-items .item-text { z-index: 2; }
+.ink-items .item-bar { z-index: 5; }
+.ink-items.interactive .item { pointer-events: auto; cursor: move; touch-action: none; }
+/* in text mode, taps on a picture add a label on top of it */
+.ink-items.mode-text .item-img { pointer-events: none !important; }
+.item-img img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 4px; user-select: none; }
+.item-img.missing { background: rgba(0,0,0,.06) repeating-linear-gradient(45deg, transparent 0 8px, rgba(0,0,0,.05) 8px 16px); border-radius: 4px; }
+.item-text .label-text { white-space: pre-wrap; line-height: 1.2; padding: 2px 4px; outline: none; min-width: 1em; border-radius: 4px; }
+.item-text .label-text:empty::before { content: 'Label'; color: var(--muted); }
+.ink-items.interactive .item-text .label-text[contenteditable="plaintext-only"],
+.ink-items.interactive .item-text .label-text[contenteditable="true"] { cursor: text; background: rgba(255,255,255,.7); box-shadow: 0 0 0 1.5px #d99a00; }
+.item.selected { outline: 2px dashed #d99a00; outline-offset: 2px; }
+.resize-handle { display: none; position: absolute; right: -9px; bottom: -9px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; border: 2px solid #d99a00; cursor: nwse-resize; }
+.item-img.selected .resize-handle { display: block; }
+.item-bar { position: absolute; z-index: 5; display: flex; gap: 2px; align-items: center; background: #fff; border-radius: 10px;
+  padding: 4px; box-shadow: 0 4px 16px rgba(0,0,0,.18); pointer-events: auto; white-space: nowrap; }
+.item-bar button { background: none; border: 0; border-radius: 6px; padding: 4px 7px; font-size: 14px; min-width: 28px; }
+.item-bar button.on { background: #ffe9a8; }
+.item-bar button.dot { width: 20px; height: 20px; min-width: 0; padding: 0; border-radius: 50%; border: 2px solid transparent; margin: 0 1px; }
+.item-bar button.dot.on { border-color: #fff; box-shadow: 0 0 0 2px #333; }
+.item-bar button.danger:hover { background: #fde2e1; }
+.item-bar select { font-size: 12px; padding: 2px 4px; }
 
 /* Pop-out window: just the note */
 body.popout #app { grid-template-columns: 1fr; }

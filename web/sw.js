@@ -1,6 +1,6 @@
 // App-shell cache so the web app opens offline. API calls always go to the network.
 const VERSION = 'notes-__APP_VERSION__';
-const SHELL = ['/', '/index.html', '/body-editor.js?v=__APP_VERSION__', '/app.js?v=__APP_VERSION__', '/style.css?v=__APP_VERSION__', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png',
+const SHELL = ['/', '/index.html', '/body-editor.js?v=__APP_VERSION__', '/canvas-items.js?v=__APP_VERSION__', '/app.js?v=__APP_VERSION__', '/style.css?v=__APP_VERSION__', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png',
   '/fonts/serif.woff2', '/fonts/serif-bold.woff2', '/fonts/mono.woff2', '/fonts/mono-bold.woff2', '/fonts/hand.woff2', '/fonts/round.woff2', '/fonts/round-bold.woff2'];
 
 self.addEventListener('install', (e) => {

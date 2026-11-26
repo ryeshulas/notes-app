@@ -86,9 +86,13 @@
         </div>
         <div id="note-body" class="note-body"></div>
         <div class="ink-tools">
+          <button data-tool="select" class="tool" title="Select, move and resize labels and images"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l13 8-6 1.5 3.5 7-2.5 1.2-3.4-7L5 18z" fill="#2b2b2b"/></svg></button>
           <button data-tool="pen" class="tool active" title="Pen">✒️</button>
           <button data-tool="highlighter" class="tool" title="Highlighter">🖍️</button>
           <button data-tool="eraser" class="tool" title="Eraser (removes whole strokes)"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6a2 2 0 0 1 2.8 0l3.4 3.4a2 2 0 0 1 0 2.8L12.3 19H20a1 1 0 1 1 0 2H8.6a2 2 0 0 1-1.4-.6l-4.6-4.6a2 2 0 0 1 0-2.8Z" fill="#f28da0"/><path d="M8.4 10.4l6.2 6.2L12.3 19H8.6l-4.6-4.6Z" fill="#fff" stroke="#c45a70" stroke-width="1.2" stroke-linejoin="round"/><path d="M15.2 3.6a2 2 0 0 1 2.8 0l3.4 3.4a2 2 0 0 1 0 2.8L12.3 19H8.6a2 2 0 0 1-1.4-.6l-4.6-4.6a2 2 0 0 1 0-2.8Z" fill="none" stroke="#9c3a52" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+          <button data-tool="text" class="tool" title="Add a text label: tap where it should go"><span class="tool-t">T</span></button>
+          <button id="add-image" class="tool" title="Add an image"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="#fff" stroke="#2b2b2b" stroke-width="1.6"/><circle cx="9" cy="10" r="1.8" fill="#e0a000"/><path d="M4.5 17.5l5-5 3.5 3.5 2.5-2.5 4 4" fill="none" stroke="#2e7d32" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
+          <input id="image-input" type="file" accept="image/*" multiple hidden>
           <span class="sep"></span>
           <span id="ink-colors"></span>
           <span class="sep"></span>
@@ -98,7 +102,7 @@
           <button id="ink-undo" class="tool" title="Undo">↶</button>
           <button id="ink-more" class="tool" title="Add more drawing space">＋ space</button>
         </div>
-        <div id="ink-wrap"><canvas id="ink"></canvas></div>
+        <div id="ink-wrap"><canvas id="ink"></canvas><div id="ink-items" class="ink-items"></div></div>
       </div>
     </section>
   </section>
@@ -106,6 +110,7 @@
   <div id="update-banner" class="update-banner hidden">A new version is available. <button id="update-reload">Update now</button></div>
 
   <script src="/body-editor.js?v=__APP_VERSION__"></script>
+  <script src="/canvas-items.js?v=__APP_VERSION__"></script>
   <script src="/app.js?v=__APP_VERSION__"></script>
 </body>
 </html>

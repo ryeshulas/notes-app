@@ -27,6 +27,11 @@ if (!PASSWORD || PASSWORD.length < 8) {
 }
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
+const FILES_DIR = path.join(DATA_DIR, 'files');
+fs.mkdirSync(FILES_DIR, { recursive: true });
+const MAX_FILE = 20 * 1024 * 1024;
+const FILE_ID = /^[A-Za-z0-9-]{8,64}$/;
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const db = new DatabaseSync(path.join(DATA_DIR, 'notes.db'));
 db.exec(`
   PRAGMA journal_mode = WAL;
@@ -42,6 +47,12 @@ db.exec(`
     PRIMARY KEY (kind, id)
   );
   CREATE INDEX IF NOT EXISTS records_rev ON records (rev);
+  CREATE TABLE IF NOT EXISTS files (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS tokens (
     hash TEXT PRIMARY KEY,
     device TEXT NOT NULL,
@@ -67,6 +78,8 @@ const q = {
   touchToken: db.prepare('UPDATE tokens SET last_used = ? WHERE hash = ?'),
   delToken: db.prepare('DELETE FROM tokens WHERE hash = ?'),
   listTokens: db.prepare('SELECT device, created_at, last_used FROM tokens ORDER BY last_used DESC'),
+  getFile: db.prepare('SELECT id, type, size FROM files WHERE id = ?'),
+  addFile: db.prepare('INSERT OR REPLACE INTO files (id, type, size, created_at) VALUES (?, ?, ?, ?)'),
 };
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -182,6 +195,45 @@ async function handleSync(req, res) {
   send(res, 200, { rev, more, applied, changes: out });
 }
 
+// --- files (images) ---
+function readBody(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) { reject(Object.assign(new Error('File too large'), { status: 413 })); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+async function handlePutFile(req, res, id) {
+  const type = String(req.headers['content-type'] || '').split(';')[0].trim();
+  if (!IMAGE_TYPES.has(type)) return send(res, 415, { error: 'Only images are supported' });
+  if (q.getFile.get(id)) { req.resume(); return send(res, 200, { ok: true, existed: true }); }
+  const buf = await readBody(req, MAX_FILE);
+  const tmp = path.join(FILES_DIR, `${id}.tmp`);
+  await fs.promises.writeFile(tmp, buf);
+  await fs.promises.rename(tmp, path.join(FILES_DIR, id));
+  q.addFile.run(id, type, buf.length, Date.now());
+  send(res, 200, { ok: true });
+}
+
+function handleGetFile(req, res, id) {
+  const row = q.getFile.get(id);
+  if (!row) return send(res, 404, { error: 'Not found' });
+  res.writeHead(200, {
+    'Content-Type': row.type,
+    'Content-Length': row.size,
+    'Cache-Control': 'private, max-age=31536000, immutable',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  fs.createReadStream(path.join(FILES_DIR, id)).pipe(res);
+}
+
 // --- static files ---
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -229,6 +281,13 @@ const server = http.createServer(async (req, res) => {
       if (pathname === '/api/sync' && req.method === 'POST') return await handleSync(req, res);
       if (pathname === '/api/logout' && req.method === 'POST') { q.delToken.run(token); return send(res, 200, { ok: true }); }
       if (pathname === '/api/devices' && req.method === 'GET') return send(res, 200, { devices: q.listTokens.all() });
+      const fm = /^\/api\/files\/([^/]+)$/.exec(pathname);
+      if (fm) {
+        const id = fm[1];
+        if (!FILE_ID.test(id)) return send(res, 400, { error: 'Bad file id' });
+        if (req.method === 'PUT') return await handlePutFile(req, res, id);
+        if (req.method === 'GET') return handleGetFile(req, res, id);
+      }
       return send(res, 404, { error: 'Not found' });
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');

@@ -2,6 +2,16 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.9.0
+- Drawing area: new **T** tool for text labels. Tap where the label should go and type. Tap on a photo
+  to label it (e.g. room measurements).
+- New **image** button adds photos from the camera or gallery onto the drawing area. Draw on top of them.
+- New **select** tool (arrow): drag labels and images to move them, drag an image's corner to resize,
+  and use the small toolbar to change a label's font, size, bold/italic/underline and color, or delete.
+- Layers: photo at the bottom, ink above it, labels on top.
+- Images are saved on the device first (work offline), stored on the NAS, and downloaded once on other devices.
+- Note cards show labels and images in the preview, plus an image count.
+
 ## 0.8.0
 - Text formatting bar above the note text: font (Default, Serif, Monospace, Handwriting, Rounded),
   **bold**, *italic*, underline, strikethrough, text color and highlight color.
