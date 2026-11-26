@@ -8,7 +8,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon-192.png">
-  <link rel="stylesheet" href="/style.css?v=3">
+  <link rel="stylesheet" href="/style.css?v=__APP_VERSION__">
 </head>
 <body>
   <!-- Sign-in -->
@@ -29,6 +29,7 @@
       <div class="brand"><img src="/icon.svg" alt="" width="24" height="24"> Notes</div>
       <nav id="folders"></nav>
       <button id="add-folder" class="link">+ New folder</button>
+      <div id="version" class="version">Version __APP_VERSION__</div>
       <div class="sidebar-foot">
         <span id="sync-status" class="sync" title="Sync status">●</span>
         <button id="logout" class="link">Sign out</button>
@@ -77,6 +78,8 @@
     </section>
   </section>
 
-  <script src="/app.js?v=3"></script>
+  <div id="update-banner" class="update-banner hidden">A new version is available. <button id="update-reload">Update now</button></div>
+
+  <script src="/app.js?v=__APP_VERSION__"></script>
 </body>
 </html>

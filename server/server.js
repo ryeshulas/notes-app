@@ -15,6 +15,11 @@ const PASSWORD = process.env.NOTES_PASSWORD || '';
 const MAX_BODY = 25 * 1024 * 1024; // ink-heavy syncs can be large
 const PAGE_SIZE = 500;
 const KINDS = new Set(['note', 'folder']);
+const APP_VERSION = (() => {
+  try { return fs.readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf8').trim(); } catch { return 'dev'; }
+})();
+// Files that carry the version number (filled in when served).
+const VERSIONED = new Set(['.html', '.js']);
 
 if (!PASSWORD || PASSWORD.length < 8) {
   console.error('NOTES_PASSWORD must be set (at least 8 characters).');
@@ -193,9 +198,10 @@ function serveStatic(req, res, pathname) {
     if (err || !st.isFile()) return send(res, 404, 'Not found');
     // Always revalidate (cheap 304s via ETag) so the page, code and styles never get out of step,
     // whatever browser or Cloudflare caching is in between.
-    const etag = `"${st.size.toString(16)}-${Math.trunc(st.mtimeMs).toString(16)}"`;
+    const ext = path.extname(file);
+    const etag = `"${APP_VERSION}-${st.size.toString(16)}-${Math.trunc(st.mtimeMs).toString(16)}"`;
     const headers = {
-      'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
+      'Content-Type': TYPES[ext] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
       ETag: etag,
       'X-Content-Type-Options': 'nosniff',
@@ -204,6 +210,7 @@ function serveStatic(req, res, pathname) {
     if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
     fs.readFile(file, (err2, buf) => {
       if (err2) return send(res, 404, 'Not found');
+      if (VERSIONED.has(ext)) buf = Buffer.from(buf.toString('utf8').replaceAll('__APP_VERSION__', APP_VERSION));
       res.writeHead(200, headers);
       res.end(req.method === 'HEAD' ? undefined : buf);
     });
@@ -214,7 +221,7 @@ function serveStatic(req, res, pathname) {
 const server = http.createServer(async (req, res) => {
   const { pathname } = new URL(req.url, 'http://localhost');
   try {
-    if (pathname === '/api/health') return send(res, 200, { ok: true });
+    if (pathname === '/api/health') return send(res, 200, { ok: true, version: APP_VERSION });
     if (pathname === '/api/login' && req.method === 'POST') return await handleLogin(req, res);
     if (pathname.startsWith('/api/')) {
       const token = authenticate(req);
@@ -233,7 +240,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`Notes server listening on :${PORT} (data: ${DATA_DIR})`));
+server.listen(PORT, () => console.log(`Notes server ${APP_VERSION} listening on :${PORT} (data: ${DATA_DIR})`));
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => { server.close(); db.close(); process.exit(0); });
 }

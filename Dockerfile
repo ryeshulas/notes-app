@@ -9,6 +9,7 @@ ENV NODE_ENV=production \
 RUN apk add --no-cache su-exec
 
 WORKDIR /app
+COPY VERSION ./VERSION
 COPY server ./server
 COPY web ./web
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

@@ -9,6 +9,7 @@ const INK_COLORS = ['#1f1f1f', '#1e5bd8', '#d32f2f', '#2e7d32', '#f9a825', '#8e2
 const INK_W = 1000;          // logical canvas width; strokes are stored in these units
 const DEFAULT_INK_H = 900;
 const SYNC_INTERVAL = 30000;
+const APP_VERSION = '__APP_VERSION__';  // filled in by the server
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -824,8 +825,24 @@ async function init() {
   else if (params.has('new')) { history.replaceState(null, '', '/'); newNote(params.get('new')); }
 
   sync();
-  setInterval(sync, SYNC_INTERVAL);
+  checkForUpdate();
+  setInterval(() => { sync(); checkForUpdate(); }, SYNC_INTERVAL);
 }
+
+// Tell the user when the server is running a newer version than this window.
+async function checkForUpdate() {
+  try {
+    const res = await fetch('/api/health', { cache: 'no-store' });
+    const { version } = await res.json();
+    if (version && version !== APP_VERSION) $('#update-banner').classList.remove('hidden');
+  } catch { /* offline */ }
+}
+$('#update-reload').addEventListener('click', async () => {
+  await editor.flush();
+  const reg = await navigator.serviceWorker?.getRegistration();
+  await reg?.update().catch(() => {});
+  location.reload();
+});
 
 bc?.addEventListener('message', (e) => { if (e.data?.type === 'changed') reloadKeys(e.data.keys); });
 window.addEventListener('online', () => { state.online = true; sync(); });
