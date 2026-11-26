@@ -6,7 +6,8 @@ services:
     ports:
       - "8787:8080"
     environment:
-      # Long, unique password. Put it in a .env file next to this one: NOTES_PASSWORD=...
-      NOTES_PASSWORD: ${NOTES_PASSWORD:?Set NOTES_PASSWORD in .env}
+      # Set NOTES_PASSWORD in the stack's environment variables (Dockhand) or a .env file.
+      NOTES_PASSWORD: ${NOTES_PASSWORD:?Set NOTES_PASSWORD}
     volumes:
-      - ./data:/data
+      # Absolute path on the NAS, so the data lands on a share you back up.
+      - /volume1/docker/notes/data:/data

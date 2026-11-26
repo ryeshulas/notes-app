@@ -22,37 +22,29 @@ and, later, a sideloaded Android app.
    sudo docker login ghcr.io -u ryeshulas    # paste the token as the password
    ```
 
-2. **Create the app folder.** Pick a spot on a share you back up, for example:
+   If you'd rather not use SSH, add the same login in Dockhand's registry settings instead
+   (registry `ghcr.io`, username `ryeshulas`, the token as the password).
 
-   ```bash
-   sudo mkdir -p /volume1/docker/notes/data
-   sudo chown 1000:1000 /volume1/docker/notes/data   # the container runs as UID 1000
-   cd /volume1/docker/notes
-   ```
+2. **Create the folder for the data.** In the UGOS file manager, create a folder on a share you back up,
+   for example `docker/notes/data`, and note its full path on the NAS (for example `/volume1/docker/notes/data`).
+   The container sets the folder's permissions itself on first start, so no `chown` is needed.
 
-   Copy `docker-compose.yml` into that folder and create a `.env` file next to it:
+3. **Create the stack in Dockhand.**
+   1. Select the UGREEN environment, then go to **Stacks → Create**.
+   2. Name it `notes` and paste in the contents of `docker-compose.yml` from this repo.
+   3. If your data folder's path is different, change `/volume1/docker/notes/data` on the `volumes` line to match.
+      Use the full path: a relative path like `./data` would end up inside Dockhand's own stack folder.
+   4. Under **Environment variables**, add `NOTES_PASSWORD` set to a long, unique password, and mark it as a secret.
+   5. Deploy. Dockhand pulls the image and starts the container.
 
-   ```
-   NOTES_PASSWORD=a-long-unique-password
-   ```
-
-3. **Start it.**
-
-   ```bash
-   sudo docker compose up -d
-   ```
-
-   It listens on port **8787**. Check `http://<nas-ip>:8787` from your laptop.
+   It listens on port **8787**. Check `http://<nas-ip>:8787` from your laptop and sign in with that password.
 
 4. **Cloudflare tunnel.** Add a public hostname (for example `notes.yourdomain.com`) pointing to
    `http://<nas-ip>:8787`. Don't put Cloudflare Access in front of it: the Android app syncs in the
    background and can't get past an Access login page. The app has its own sign-in (password, then a token per device).
 
-5. **Updating.** After new code lands on `main` and the GitHub Action finishes:
-
-   ```bash
-   cd /volume1/docker/notes && sudo docker compose pull && sudo docker compose up -d
-   ```
+5. **Updating.** After new code lands on `main` and the GitHub Action finishes, open the `notes` stack in
+   Dockhand and pull and redeploy it.
 
 ## Using the web app
 
