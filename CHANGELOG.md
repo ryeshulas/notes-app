@@ -2,6 +2,14 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.11.0
+- The toolbar for a selected label or image now sits just under the drawing toolbar, so it never
+  runs off the screen.
+- Image size controls: a size slider, − / + buttons and "Full width", shown as soon as an image is
+  added and whenever you select one with the arrow tool. The corner resize handle is bigger.
+- Labels near the right edge slide left as you type instead of wrapping.
+- Larger back button for leaving a note.
+
 ## 0.10.0
 - **🖼 Picture** button in the text toolbar inserts a photo into the note text, after the line you're on.
   Tap a picture to make it small, medium or full width, or remove it.

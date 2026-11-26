@@ -7,14 +7,15 @@
 const CanvasItems = (() => {
   const LABEL_SIZES = [18, 24, 32, 44, 60];
 
-  function create(layer, { scale, onChange, fileURL, onEditStart }) {
+  function create(layer, { scale, onChange, fileURL, onEditStart, barHost }) {
     let items = [];
     let mode = 'pen';          // 'pen' (items ignore input) | 'select' | 'text'
     let selected = null;       // item id
     let editing = null;        // label id being typed into
     const els = new Map();     // id -> element
-    const bar = document.createElement('div');
-    bar.className = 'item-bar hidden';
+    // Toolbar for the selected item, shown in a fixed spot just under the drawing toolbar.
+    const bar = barHost;
+    let sizeInput = null;
 
     const byId = (id) => items.find((it) => it.id === id);
     const changed = () => onChange && onChange();
@@ -29,7 +30,7 @@ const CanvasItems = (() => {
         el.style.height = `${it.h * s}px`;
       } else {
         el.style.fontSize = `${(it.size || 24) * s}px`;
-        el.style.maxWidth = `${Math.max(60, (1000 - it.x) * s)}px`;
+        el.style.maxWidth = `${1000 * s}px`;
       }
     }
 
@@ -53,7 +54,7 @@ const CanvasItems = (() => {
           t.className = 'label-text';
           t.spellcheck = true;
           el.append(t);
-          t.addEventListener('input', () => { it.s = t.innerText.replace(/\n$/, ''); changed(); });
+          t.addEventListener('input', () => { it.s = t.innerText.replace(/\n$/, ''); keepInside(it); changed(); });
           t.addEventListener('blur', () => finishEditing(it.id));
           t.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); t.blur(); } });
           t.addEventListener('paste', (e) => { e.preventDefault(); document.execCommand('insertText', false, e.clipboardData.getData('text/plain')); });
@@ -72,6 +73,15 @@ const CanvasItems = (() => {
       place(el, it);
     }
 
+    // Labels near the right edge slide left as they grow, instead of wrapping.
+    function keepInside(it) {
+      const el = els.get(it.id);
+      if (!el) return;
+      const s = scale();
+      const w = el.offsetWidth / s;
+      if (it.x + w > 1000) { it.x = Math.max(0, 1000 - w); place(el, it); }
+    }
+
     function render() {
       for (const [id, el] of els) if (!byId(id)) { el.remove(); els.delete(id); }
       items.forEach(renderItem);
@@ -81,11 +91,27 @@ const CanvasItems = (() => {
       renderBar();
     }
 
-    // ---- floating toolbar for the selected item ----
+    // ---- toolbar for the selected item ----
+    const imagePct = (it) => Math.round(it.w / 10);
+    function setImageWidth(it, pct) {
+      const ratio = it.h / it.w;
+      it.w = Math.max(50, Math.min(1000, pct * 10));
+      it.h = it.w * ratio;
+      it.x = Math.max(0, Math.min(it.x, 1000 - it.w));
+      const el = els.get(it.id);
+      if (el) place(el, it);
+      if (sizeInput) { sizeInput.value = imagePct(it); sizeInput.nextSibling.textContent = `${imagePct(it)}%`; }
+      changed();
+    }
     function renderBar() {
       const it = byId(selected);
-      if (!it || mode === 'pen') { bar.classList.add('hidden'); return; }
+      sizeInput = null;
+      if (!it || mode === 'pen') { bar.classList.add('hidden'); bar.textContent = ''; return; }
       bar.textContent = '';
+      const title = document.createElement('span');
+      title.className = 'bar-title';
+      title.textContent = it.k === 'img' ? 'Image' : 'Label';
+      bar.append(title);
       const btn = (label, title, fn, cls = '') => {
         const b = document.createElement('button');
         b.innerHTML = label;
@@ -116,13 +142,26 @@ const CanvasItems = (() => {
         }
         btn('✎', 'Edit text', () => startEditing(it.id));
       }
-      btn('🗑', 'Delete', () => remove(it.id), 'danger');
-      const s = scale();
-      const el = els.get(it.id);
-      const h = el ? el.offsetHeight : 0;
-      const top = it.y * s - 44;
-      bar.style.left = `${Math.max(0, it.x * s)}px`;
-      bar.style.top = `${top < 0 ? it.y * s + h + 6 : top}px`;
+      if (it.k === 'img') {
+        btn('−', 'Smaller', () => setImageWidth(it, imagePct(it) - 10));
+        const range = document.createElement('input');
+        range.type = 'range';
+        range.min = '5';
+        range.max = '100';
+        range.value = imagePct(it);
+        range.title = 'Image size';
+        range.className = 'size-slider';
+        range.addEventListener('pointerdown', (e) => e.stopPropagation());
+        range.addEventListener('input', () => setImageWidth(it, Number(range.value)));
+        const pct = document.createElement('span');
+        pct.className = 'size-pct';
+        pct.textContent = `${imagePct(it)}%`;
+        bar.append(range, pct);
+        sizeInput = range;
+        btn('+', 'Bigger', () => setImageWidth(it, imagePct(it) + 10));
+        btn('Full width', 'Fit the width of the page', () => { it.x = 0; setImageWidth(it, 100); });
+      }
+      btn('🗑 Delete', 'Delete', () => remove(it.id), 'danger');
       bar.classList.remove('hidden');
     }
     const nearestSize = (v) => LABEL_SIZES.reduce((a, b) => (Math.abs(b - (v || 24)) < Math.abs(a - (v || 24)) ? b : a));
@@ -190,7 +229,7 @@ const CanvasItems = (() => {
             it.y = Math.max(0, start.iy + dy);
           }
           place(el, it);
-          renderBar();
+          if (sizeInput && resizing) { sizeInput.value = imagePct(it); sizeInput.nextSibling.textContent = `${imagePct(it)}%`; }
         };
         const up = () => {
           el.removeEventListener('pointermove', move);
@@ -218,8 +257,6 @@ const CanvasItems = (() => {
       if (mode === 'select' && !e.target.closest('.item, .item-bar')) { selected = null; render(); }
     });
 
-    layer.append(bar);
-
     return {
       load(list) {
         for (const el of els.values()) el.remove();
@@ -232,7 +269,7 @@ const CanvasItems = (() => {
       items() { return items.map((it) => ({ ...it })); },
       setMode(m) { mode = m; if (m === 'pen') { selected = null; if (editing) document.activeElement?.blur?.(); } render(); },
       deselect() { if (selected || editing) { if (editing) document.activeElement?.blur?.(); selected = null; render(); } },
-      relayout() { items.forEach((it) => { const el = els.get(it.id); if (el) place(el, it); }); renderBar(); },
+      relayout() { items.forEach((it) => { const el = els.get(it.id); if (el) place(el, it); }); },
       addLabel(x, y) {
         const it = { id: uid(), k: 'text', x, y: Math.max(0, y - 16), s: '', size: 28, st: {} };
         items.push(it);

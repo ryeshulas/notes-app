@@ -784,6 +784,7 @@ const canvasItems = CanvasItems.create($('#ink-items'), {
     ink.onChange?.();
   },
   fileURL: (id) => files.url(id),
+  barHost: $('#item-bar'),
 });
 
 function setTool(name) { document.querySelector(`.ink-tools [data-tool="${name}"]`)?.click(); }
