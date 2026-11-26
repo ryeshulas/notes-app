@@ -1,0 +1,12 @@
+services:
+  notes:
+    image: ghcr.io/ryeshulas/notes-app:latest
+    container_name: notes
+    restart: unless-stopped
+    ports:
+      - "8787:8080"
+    environment:
+      # Long, unique password. Put it in a .env file next to this one: NOTES_PASSWORD=...
+      NOTES_PASSWORD: ${NOTES_PASSWORD:?Set NOTES_PASSWORD in .env}
+    volumes:
+      - ./data:/data
