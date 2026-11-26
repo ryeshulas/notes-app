@@ -189,17 +189,24 @@ function serveStatic(req, res, pathname) {
   if (rel === '/' || !path.extname(rel)) rel = '/index.html'; // app routes fall back to the app shell
   const file = path.normalize(path.join(WEB_DIR, rel));
   if (!file.startsWith(WEB_DIR)) return send(res, 403, 'Forbidden');
-  fs.readFile(file, (err, buf) => {
-    if (err) return send(res, 404, 'Not found');
-    const ext = path.extname(file);
-    const cache = ext === '.html' || path.basename(file) === 'sw.js' ? 'no-cache' : 'public, max-age=300';
-    res.writeHead(200, {
-      'Content-Type': TYPES[ext] || 'application/octet-stream',
-      'Cache-Control': cache,
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) return send(res, 404, 'Not found');
+    // Always revalidate (cheap 304s via ETag) so the page, code and styles never get out of step,
+    // whatever browser or Cloudflare caching is in between.
+    const etag = `"${st.size.toString(16)}-${Math.trunc(st.mtimeMs).toString(16)}"`;
+    const headers = {
+      'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+      ETag: etag,
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
+    };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
+    fs.readFile(file, (err2, buf) => {
+      if (err2) return send(res, 404, 'Not found');
+      res.writeHead(200, headers);
+      res.end(req.method === 'HEAD' ? undefined : buf);
     });
-    res.end(buf);
   });
 }
 

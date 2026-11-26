@@ -67,9 +67,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 .card h3 { margin: 0 0 6px; font-size: 15px; word-break: break-word; }
 .card p { margin: 0; font-size: 13px; color: #4a463e; white-space: pre-wrap; word-break: break-word; display: -webkit-box;
   -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-.card canvas { width: 100%; display: block; margin-top: 6px; }
+.card canvas { max-width: 100%; height: auto; display: block; margin-top: 6px; }
+.card h3.untitled { font-weight: 600; color: #4a463e; }
+.section-title { grid-column: 1 / -1; margin: 8px 0 -4px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .card .pin { position: absolute; top: 8px; right: 10px; font-size: 12px; }
-.card .meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+.card .meta { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
 .card .restore { margin-top: 8px; }
 .empty { color: var(--muted); text-align: center; margin-top: 60px; }
 
@@ -131,8 +133,14 @@ body.sidebar-collapsed #sidebar { display: none; }
 
 @media (max-width: 760px) {
   #list-pane { padding: 0 12px 100px; }
-  .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .card { min-height: 90px; max-height: 220px; }
+  /* Phone: one note per row, like a list */
+  .grid { grid-template-columns: 1fr; gap: 12px; }
+  .card { min-height: 0; max-height: 300px; padding: 16px 18px; border-radius: 18px; }
+  .card h3 { font-size: 19px; margin-bottom: 2px; padding-right: 24px; }
+  .card .meta { font-size: 13px; margin-bottom: 10px; }
+  .card p { font-size: 15px; line-height: 1.45; -webkit-line-clamp: 4; }
+  .card .pin { top: 14px; right: 16px; font-size: 14px; }
+  .section-title { margin-top: 10px; font-size: 15px; text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 700; }
   #editor { position: fixed; inset: 0; width: 100%; }
   .mobile-only { display: inline-block; }
   .desktop-only { display: none; }

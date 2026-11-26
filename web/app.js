@@ -11,6 +11,20 @@ const DEFAULT_INK_H = 900;
 const SYNC_INTERVAL = 30000;
 
 const $ = (sel) => document.querySelector(sel);
+
+// If anything breaks at startup, show the error instead of a blank screen.
+function showFatal(msg) {
+  let el = document.getElementById('fatal');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'fatal';
+    el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:99;background:#b3261e;color:#fff;padding:12px 14px;border-radius:10px;font:14px system-ui';
+    document.body.append(el);
+  }
+  el.textContent = `Something went wrong: ${msg}. Try closing and reopening the app.`;
+}
+window.addEventListener('error', (e) => showFatal(e.message));
+window.addEventListener('unhandledrejection', (e) => showFatal(e.reason?.message || String(e.reason)));
 const params = new URLSearchParams(location.search);
 const isPopout = params.has('popout');
 
@@ -317,12 +331,13 @@ function visibleNotes() {
   }).sort((a, b) => (b.data.pinned - a.data.pinned) || (b.updated_at - a.updated_at));
 }
 
-function relTime(t) {
-  const s = (Date.now() - t) / 1000;
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return new Date(t).toLocaleDateString();
+function noteDate(t) {
+  const d = new Date(t);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const opts = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString([], opts);
 }
 
 function renderList() {
@@ -332,17 +347,30 @@ function renderList() {
   grid.textContent = '';
   const list = visibleNotes();
   $('#empty').classList.toggle('hidden', list.length > 0);
+  const hasPinned = state.view !== 'trash' && list.some((n) => n.data.pinned);
+  let section = null;
   for (const n of list) {
+    if (hasPinned) {
+      const s = n.data.pinned ? 'Pinned' : 'Notes';
+      if (s !== section) {
+        section = s;
+        const h = document.createElement('h4'); h.className = 'section-title'; h.textContent = s; grid.append(h);
+      }
+    }
     const card = document.createElement('div');
     card.className = 'card' + (n.id === state.openId ? ' selected' : '');
     card.style.setProperty('--c', NOTE_COLORS[n.data.color] || NOTE_COLORS.yellow);
     if (n.data.pinned) { const p = document.createElement('span'); p.className = 'pin'; p.textContent = '📌'; card.append(p); }
     const strokes = n.data.ink?.strokes || [];
-    if (n.data.title) { const h = document.createElement('h3'); h.textContent = n.data.title; card.append(h); }
-    if (n.data.text) { const p = document.createElement('p'); p.textContent = n.data.text; card.append(p); }
+    const h = document.createElement('h3');
+    h.textContent = n.data.title || (n.data.text ? n.data.text.split('\n')[0].slice(0, 60) : strokes.length ? 'Drawing' : 'Untitled');
+    if (!n.data.title) h.classList.add('untitled');
+    const m = document.createElement('div'); m.className = 'meta'; m.textContent = noteDate(n.updated_at);
+    card.append(h, m);
+    // Without a title the first line is the heading, so the preview starts after it.
+    const preview = n.data.title ? n.data.text : (n.data.text || '').split('\n').slice(1).join('\n').trim();
+    if (preview) { const p = document.createElement('p'); p.textContent = preview; card.append(p); }
     if (strokes.length) card.append(thumbnail(strokes));
-    if (!n.data.title && !n.data.text && !strokes.length) { const p = document.createElement('p'); p.textContent = '(empty)'; card.append(p); }
-    const m = document.createElement('div'); m.className = 'meta'; m.textContent = relTime(n.updated_at); card.append(m);
     if (state.view === 'trash') {
       const row = document.createElement('div'); row.className = 'restore';
       const r = document.createElement('button'); r.textContent = 'Restore';
@@ -363,14 +391,14 @@ function renderList() {
 
 function thumbnail(strokes) {
   const c = document.createElement('canvas');
-  const cssW = 220;
+  const cssW = 320;
   let maxY = 0;
   for (const s of strokes) for (let i = 1; i < s.p.length; i += 3) maxY = Math.max(maxY, s.p[i]);
   const s = cssW / INK_W;
   const h = Math.min(maxY + 20, 600) * s;
   const dpr = window.devicePixelRatio || 1;
   c.width = cssW * dpr; c.height = Math.max(h, 10) * dpr;
-  c.style.height = `${Math.max(h, 10)}px`;
+  c.style.width = `${cssW}px`;
   const ctx = c.getContext('2d');
   ctx.setTransform(dpr * s, 0, 0, dpr * s, 0, 0);
   strokes.forEach((st) => drawStroke(ctx, st));
