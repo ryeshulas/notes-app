@@ -133,6 +133,16 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 .note-body .t-p .marker { display: none; }
 .note-body .txt { flex: 1; min-width: 0; outline: none; white-space: pre-wrap; word-break: break-word; min-height: 1.45em; }
 .note-body .done .txt { text-decoration: line-through; color: var(--muted); }
+.note-body .t-img { display: block; margin: 6px 0; }
+.body-img { position: relative; max-width: 100%; cursor: pointer; }
+.body-img img { width: 100%; display: block; border-radius: 8px; }
+.body-img.missing { min-height: 80px; background: rgba(0,0,0,.06); border-radius: 8px; }
+.img-tools { display: none; position: absolute; top: 6px; left: 6px; gap: 4px; background: #fff; border-radius: 8px; padding: 4px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.2); flex-wrap: wrap; }
+.body-img:hover .img-tools, .body-img.show .img-tools { display: flex; }
+.img-tools button { background: none; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+.img-tools button.on { background: #ffe9a8; }
+.img-tools button.danger:hover { background: #fde2e1; }
 .note-body .txt[data-placeholder]:empty::before { content: attr(data-placeholder); color: var(--muted); }
 .ink-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; position: sticky; top: 0; z-index: 1;
   background: rgba(255,255,255,.7); backdrop-filter: blur(6px); border-radius: 10px; padding: 4px 6px; margin: 6px 0; }

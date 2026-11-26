@@ -464,11 +464,12 @@ function renderList() {
     const todos = (n.data.blocks || []).filter((b) => b.t === 'todo');
     if (todos.length) m.textContent += ` · ${todos.filter((b) => b.d).length}/${todos.length} done`;
     const canvasItems = n.data.ink?.items || [];
-    const imgCount = canvasItems.filter((it) => it.k === 'img').length;
+    const imgCount = canvasItems.filter((it) => it.k === 'img').length + (n.data.blocks || []).filter((b) => b.t === 'img').length;
     if (imgCount) m.textContent += ` · 🖼 ${imgCount}`;
     card.append(h, m);
     // Without a title the first line is the heading, so the preview starts after it.
-    const preview = n.data.title ? n.data.text : (n.data.text || '').split('\n').slice(1).join('\n').trim();
+    const plain = (n.data.text || '').replace(/^\[image\]$/gm, '🖼');
+    const preview = n.data.title ? plain : plain.split('\n').slice(1).join('\n').trim();
     if (preview) { const p = document.createElement('p'); p.textContent = preview; card.append(p); }
     if (strokes.length || canvasItems.length) card.append(thumbnail(strokes, canvasItems));
     if (state.view === 'trash') {
@@ -854,6 +855,22 @@ $('#ink-more').addEventListener('click', () => { ink.height += 500; ink.resize()
 const body = BodyEditor.create($('#note-body'), {
   onChange: () => editor.queueSave(),
   onSelectionStyle: (st) => showFormatState(st),
+  fileURL: (id) => files.url(id),
+});
+
+// Pictures in the text
+$('#text-image').addEventListener('pointerdown', (e) => e.preventDefault());
+$('#text-image').addEventListener('click', () => $('#text-image-input').click());
+$('#text-image-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file || !state.openId) return;
+  try {
+    const { blob } = await prepareImage(file);
+    const id = uuid();
+    await files.put(id, blob);
+    body.insertImage(id);
+  } catch (err) { alert(`Couldn't add that picture: ${err.message || err}`); }
 });
 
 // ---- formatting bar ----

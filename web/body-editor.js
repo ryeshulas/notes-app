@@ -5,7 +5,8 @@
 'use strict';
 
 const BodyEditor = (() => {
-  const TYPES = ['p', 'ul', 'ol', 'todo'];
+  const TYPES = ['p', 'ul', 'ol', 'todo', 'img'];
+  const IMG_SIZES = { s: 33, m: 66, l: 100 };
   const MAX_INDENT = 4;
   const BULLETS = ['•', '◦', '▪', '•', '◦'];
   const STYLE_KEYS = ['b', 'i', 'u', 'x', 'c', 'h', 'f'];
@@ -110,6 +111,7 @@ const BodyEditor = (() => {
     const lab = labels(blocks);
     return blocks.map((b, k) => {
       const pad = '  '.repeat(b.i || 0);
+      if (b.t === 'img') return '[image]';
       return b.t === 'p' ? pad + b.s : `${pad}${lab[k]} ${b.s}`;
     }).join('\n').replace(/\s+$/, '');
   }
@@ -134,6 +136,10 @@ const BodyEditor = (() => {
   function clean(b) {
     const out = { t: TYPES.includes(b.t) ? b.t : 'p', s: String(b.s || ''), d: !!b.d, i: Math.max(0, Math.min(MAX_INDENT, b.i | 0)), r: null };
     if (Array.isArray(b.r) && runsText(b.r) === out.s) out.r = normRuns(b.r.map((r) => ({ s: String(r.s || ''), ...styleOf(r) })));
+    if (out.t === 'img') {
+      if (typeof b.file !== 'string' || !b.file) return { t: 'p', s: '', d: false, i: 0, r: null };
+      Object.assign(out, { s: '', r: null, i: 0, file: b.file, z: IMG_SIZES[b.z] ? b.z : 'l' });
+    }
     return out;
   }
   function blocksForNote(data) {
@@ -217,7 +223,7 @@ const BodyEditor = (() => {
   }
 
   // ---------------------------------------------------------------- the editor
-  function create(root, { onChange, onSelectionStyle, placeholder = 'Type here…' } = {}) {
+  function create(root, { onChange, onSelectionStyle, fileURL, placeholder = 'Type here…' } = {}) {
     let blocks = [clean({ t: 'p', s: '' })];
     let lastIndex = 0;
     let lastSel = null;   // {a:{line,off}, f:{line,off}} — kept so toolbar controls work after focus moves
@@ -231,6 +237,7 @@ const BodyEditor = (() => {
       root.textContent = '';
       const lab = labels(blocks);
       blocks.forEach((b, i) => {
+        if (b.t === 'img') { root.append(renderImage(b, i)); return; }
         const line = document.createElement('div');
         line.className = `line t-${b.t}${b.t === 'todo' && b.d ? ' done' : ''}`;
         line.style.paddingLeft = `${(b.i || 0) * 1.6}em`;
@@ -257,6 +264,55 @@ const BodyEditor = (() => {
       });
     }
 
+    function renderImage(b, i) {
+      const line = document.createElement('div');
+      line.className = 'line t-img';
+      line.contentEditable = 'false';
+      const fig = document.createElement('div');
+      fig.className = 'body-img';
+      fig.style.width = `${IMG_SIZES[b.z] || 100}%`;
+      const img = document.createElement('img');
+      img.alt = '';
+      img.draggable = false;
+      fig.append(img);
+      if (fileURL) fileURL(b.file).then((u) => { if (u) img.src = u; else fig.classList.add('missing'); });
+      const tools = document.createElement('div');
+      tools.className = 'img-tools';
+      for (const [z, label] of [['s', 'Small'], ['m', 'Medium'], ['l', 'Full width']]) {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.className = b.z === z ? 'on' : '';
+        btn.addEventListener('click', (e) => { e.stopPropagation(); readAll(); blocks[i].z = z; render(); changed(); });
+        tools.append(btn);
+      }
+      const del = document.createElement('button');
+      del.textContent = '🗑 Remove';
+      del.className = 'danger';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        readAll();
+        blocks.splice(i, 1);
+        if (!blocks.length) blocks.push(clean({ t: 'p', s: '' }));
+        render();
+        const target = Math.min(i, blocks.length - 1);
+        if (blocks[target].t !== 'img') focusLine(target, 0);
+        changed();
+      });
+      tools.append(del);
+      fig.append(tools);
+      fig.addEventListener('click', () => {
+        root.querySelectorAll('.body-img.show').forEach((x) => { if (x !== fig) x.classList.remove('show'); });
+        fig.classList.toggle('show');
+      });
+      line.append(fig);
+      return line;
+    }
+    // nearest text line in a direction (skips image lines)
+    function textLine(i, dir) {
+      for (let j = i; j >= 0 && j < blocks.length; j += dir) if (blocks[j].t !== 'img') return j;
+      return -1;
+    }
+
     function focusLine(i, offset) {
       const el = textEl(i);
       if (!el) return;
@@ -264,6 +320,7 @@ const BodyEditor = (() => {
       setCaret(el, offset === 'end' ? blocks[i].s.length : offset);
     }
     function readLine(i) {
+      if (blocks[i]?.t === 'img') return;
       const el = textEl(i);
       if (el) setRuns(blocks[i], readRuns(el));
     }
@@ -307,6 +364,12 @@ const BodyEditor = (() => {
       if (b.i > 0) { b.i--; return structural(i, 0); }
       if (b.t !== 'p') { b.t = 'p'; b.d = false; return structural(i, 0); }
       if (i === 0) return;
+      if (blocks[i - 1].t === 'img') {
+        // an empty line right after a picture is removed; otherwise just hop above the picture
+        if (!b.s) { blocks.splice(i, 1); render(); const up = textLine(i - 1, -1); if (up >= 0) focusLine(up, 'end'); changed(); }
+        else { const up = textLine(i - 1, -1); if (up >= 0) focusLine(up, 'end'); }
+        return;
+      }
       readLine(i - 1);
       const prev = blocks[i - 1];
       const len = prev.s.length;
@@ -316,7 +379,7 @@ const BodyEditor = (() => {
     }
 
     function deleteAtEnd(i) {
-      if (i >= blocks.length - 1) return;
+      if (i >= blocks.length - 1 || blocks[i + 1].t === 'img') return;
       readLine(i); readLine(i + 1);
       const len = blocks[i].s.length;
       setRuns(blocks[i], [...runsOf(blocks[i]), ...runsOf(blocks[i + 1])]);
@@ -329,7 +392,7 @@ const BodyEditor = (() => {
       const el = textEl(i);
       const pos = (el && caretOffset(el)?.start) ?? blocks[i].s.length;
       const b = blocks[i];
-      const maxHere = i === 0 ? 0 : Math.min(MAX_INDENT, (blocks[i - 1].i || 0) + 1);
+      const maxHere = i === 0 || blocks[i - 1].t === 'img' ? 0 : Math.min(MAX_INDENT, (blocks[i - 1].i || 0) + 1);
       const next = Math.max(0, Math.min(maxHere, (b.i || 0) + delta));
       if (next === b.i) return;
       b.i = next;
@@ -497,12 +560,14 @@ const BodyEditor = (() => {
       if (e.key === 'ArrowUp' && i > 0) {
         const r = getSelection().getRangeAt(0).getBoundingClientRect();
         const top = el.getBoundingClientRect().top;
-        if (!r.height || r.top - top < 6) { e.preventDefault(); readLine(i - 1); focusLine(i - 1, Math.min(c?.start ?? 0, blocks[i - 1].s.length)); }
+        const j = textLine(i - 1, -1);
+        if (j >= 0 && (!r.height || r.top - top < 6)) { e.preventDefault(); readLine(j); focusLine(j, Math.min(c?.start ?? 0, blocks[j].s.length)); }
       }
       if (e.key === 'ArrowDown' && i < blocks.length - 1) {
         const r = getSelection().getRangeAt(0).getBoundingClientRect();
         const bottom = el.getBoundingClientRect().bottom;
-        if (!r.height || bottom - r.bottom < 6) { e.preventDefault(); readLine(i + 1); focusLine(i + 1, Math.min(c?.start ?? 0, blocks[i + 1].s.length)); }
+        const j = textLine(i + 1, 1);
+        if (j >= 0 && (!r.height || bottom - r.bottom < 6)) { e.preventDefault(); readLine(j); focusLine(j, Math.min(c?.start ?? 0, blocks[j].s.length)); }
       }
     });
 
@@ -545,8 +610,20 @@ const BodyEditor = (() => {
         render();
       },
       blocks() { readAll(); return blocks.map((b) => ({ ...b, r: b.r ? b.r.map((r) => ({ ...r })) : null })); },
+      imageCount() { return blocks.filter((b) => b.t === 'img').length; },
       focused() { return root.contains(document.activeElement); },
-      focusEnd() { focusLine(blocks.length - 1, 'end'); },
+      focusEnd() { const j = textLine(blocks.length - 1, -1); if (j >= 0) focusLine(j, 'end'); },
+      // Insert a picture after the line being edited, with a text line after it to keep typing.
+      insertImage(file) {
+        readAll();
+        const i = Math.min(lastIndex, blocks.length - 1);
+        const at = blocks.length === 1 && blocks[0].t === 'p' && !blocks[0].s ? 0 : i + 1;
+        const img = clean({ t: 'img', file, z: 'l' });
+        if (at === 0) blocks.splice(0, 0, img); else blocks.splice(at, 0, img);
+        const next = at + 1;
+        if (!blocks[next] || blocks[next].t === 'img') blocks.splice(next, 0, clean({ t: 'p', s: '' }));
+        structural(next, 0);
+      },
       current() { return Math.min(lastIndex, blocks.length - 1); },
       setType(type) {
         const i = this.current();

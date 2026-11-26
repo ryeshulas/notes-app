@@ -2,6 +2,11 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.10.0
+- **🖼 Picture** button in the text toolbar inserts a photo into the note text, after the line you're on.
+  Tap a picture to make it small, medium or full width, or remove it.
+- Note cards count pictures in the text too.
+
 ## 0.9.0
 - Drawing area: new **T** tool for text labels. Tap where the label should go and type. Tap on a photo
   to label it (e.g. room measurements).
