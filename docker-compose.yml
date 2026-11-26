@@ -1,6 +1,7 @@
 services:
   notes:
     image: ghcr.io/ryeshulas/notes-app:latest
+    pull_policy: always   # get the newest image on every deploy
     container_name: notes
     restart: unless-stopped
     ports:
