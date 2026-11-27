@@ -101,7 +101,7 @@ const BodyEditor = (() => {
     el.style.fontStyle = st.i ? 'italic' : '';
     const deco = [st.u && 'underline', st.x && 'line-through'].filter(Boolean).join(' ');
     el.style.textDecoration = deco;
-    el.style.color = st.c || '';
+    el.style.color = st.c ? (window.inkColor ? window.inkColor(st.c) : st.c) : '';
     el.style.backgroundColor = st.h || '';
     el.className = st.f && FONTS.includes(st.f) ? `f-${st.f}` : '';
   }

@@ -5,6 +5,14 @@ const NOTE_COLORS = {
   yellow: '#fff6c7', green: '#dff5d8', blue: '#dcecff', pink: '#ffe0ea',
   purple: '#ece2ff', orange: '#ffe6cc', gray: '#eeeeee', white: '#ffffff',
 };
+const NOTE_COLORS_DARK = {
+  yellow: '#3f3a22', green: '#24402c', blue: '#1f3552', pink: '#4a2634',
+  purple: '#382c52', orange: '#4a3420', gray: '#353533', white: '#2a2926',
+};
+const isDark = () => document.documentElement.classList.contains('dark');
+const noteColor = (name) => (isDark() ? NOTE_COLORS_DARK : NOTE_COLORS)[name] || (isDark() ? NOTE_COLORS_DARK : NOTE_COLORS).yellow;
+// Black ink, lines and text are shown light in dark mode (they're stored as black).
+window.inkColor = (c) => (isDark() && (!c || c === '#1f1f1f' || c === '#000000') ? '#e8e8e8' : c);
 const INK_COLORS = ['#1f1f1f', '#1e5bd8', '#d32f2f', '#2e7d32', '#f9a825', '#8e24aa'];
 const INK_W = 1000;          // logical canvas width; strokes are stored in these units
 const DEFAULT_INK_H = 900;
@@ -462,7 +470,7 @@ function renderList() {
     }
     const card = document.createElement('div');
     card.className = 'card' + (n.id === state.openId ? ' selected' : '');
-    card.style.setProperty('--c', NOTE_COLORS[n.data.color] || NOTE_COLORS.yellow);
+    card.style.setProperty('--c', noteColor(n.data.color));
     if (n.data.pinned) { const p = document.createElement('span'); p.className = 'pin'; p.textContent = '📌'; card.append(p); }
     const strokes = n.data.ink?.strokes || [];
     const h = document.createElement('h3');
@@ -526,7 +534,7 @@ function thumbnail(strokes, items = []) {
   strokes.forEach((st) => drawStroke(ctx, st));
   function drawLabels() {
     for (const it of items.filter((x) => x.k === 'text')) {
-      ctx.fillStyle = it.st?.c || '#1f1f1f';
+      ctx.fillStyle = window.inkColor(it.st?.c || '#1f1f1f');
       ctx.font = `${it.st?.b ? '700 ' : ''}${it.size || 28}px system-ui, sans-serif`;
       (it.s || '').split('\n').forEach((line, i) => ctx.fillText(line, it.x + 4, it.y + (it.size || 28) * (1 + i * 1.2)));
     }
@@ -591,7 +599,7 @@ function drawStroke(ctx, st) {
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = st.c;
+  ctx.strokeStyle = window.inkColor(st.c);
   if (st.t === 'highlighter') {
     ctx.globalAlpha = 0.35;
     ctx.lineWidth = st.w * 4;
@@ -605,7 +613,7 @@ function drawStroke(ctx, st) {
   }
   const n = p.length / 3;
   if (n === 1) {
-    ctx.fillStyle = st.c;
+    ctx.fillStyle = window.inkColor(st.c);
     ctx.beginPath(); ctx.arc(p[0], p[1], st.w * (0.35 + p[2]) / 2, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     return;
@@ -997,7 +1005,7 @@ document.querySelectorAll('.ink-tools [data-tool]').forEach((b) => b.addEventLis
   INK_COLORS.forEach((c, i) => {
     const b = document.createElement('button');
     b.className = 'ink-swatch' + (i === 0 ? ' active' : '');
-    b.style.background = c;
+    b.style.background = c === '#1f1f1f' ? 'var(--ink-default)' : c;
     b.title = 'Ink color';
     b.addEventListener('click', () => {
       ink.color = c;
@@ -1094,7 +1102,7 @@ const editor = {
     body.load(BodyEditor.blocksForNote(d));
     $('#note-folder').value = d.folder && state.records.get(keyOf('folder', d.folder)) ? d.folder : '';
     $('#note-pin').classList.toggle('on', !!d.pinned);
-    $('#editor').style.setProperty('--c', NOTE_COLORS[d.color] || NOTE_COLORS.yellow);
+    $('#editor').style.setProperty('--c', noteColor(d.color));
     document.querySelectorAll('#note-colors .swatch').forEach((s) => s.classList.toggle('active', s.dataset.color === (d.color || 'yellow')));
     ink.load(d.ink);
     if (isPopout) document.title = d.title || 'Note';
@@ -1165,7 +1173,7 @@ $('#note-pin').addEventListener('click', () => {
     b.addEventListener('click', () => {
       const n = getNote(state.openId);
       n.data = { ...n.data, color: name };
-      $('#editor').style.setProperty('--c', hex);
+      $('#editor').style.setProperty('--c', noteColor(name));
       wrap.querySelectorAll('.swatch').forEach((s) => s.classList.toggle('active', s === b));
       editor.queueSave(0);
     });
@@ -1341,8 +1349,11 @@ $('#pip-note').addEventListener('click', async () => {
 
 // Print / Save as PDF: hide empty drawing space, trim the drawing to what's on it.
 $('#print-note').addEventListener('click', () => { $('#note-menu').classList.add('hidden'); window.print(); });
+let printedDark = false;
 window.addEventListener('beforeprint', () => {
   if (!state.openId) return;
+  printedDark = isDark();
+  if (printedDark) { document.documentElement.classList.remove('dark'); editor.load(state.openId); }
   const wrap = $('#ink-wrap');
   const used = Math.max(ink.strokes.reduce((m, st) => { for (let i = 1; i < st.p.length; i += 3) m = Math.max(m, st.p[i]); return m; }, 0), canvasItems.lowestPoint());
   if (!used) { wrap.classList.add('print-empty'); return; }
@@ -1356,7 +1367,7 @@ window.addEventListener('beforeprint', () => {
   const snap = document.createElement('img');
   snap.id = 'ink-print';
   snap.src = ink.canvas.toDataURL('image/png');
-  snap.style.cssText = `position:absolute;left:0;top:0;width:${ink.canvas.clientWidth}px;height:${ink.canvas.clientHeight}px;z-index:1;pointer-events:none`;
+  snap.style.cssText = `position:absolute;left:0;top:0;width:${ink.canvas.clientWidth}px;height:${ink.canvas.clientHeight}px;z-index:2;pointer-events:none`;
   wrap.append(snap);
 });
 window.addEventListener('afterprint', () => {
@@ -1364,6 +1375,7 @@ window.addEventListener('afterprint', () => {
   wrap.classList.remove('print-empty');
   wrap.style.height = ''; wrap.style.overflow = ''; wrap.style.width = '';
   $('#ink-print')?.remove();
+  if (printedDark) { document.documentElement.classList.add('dark'); printedDark = false; if (state.openId) editor.load(state.openId); return; }
   if (state.openId) ink.resize();
 });
 
@@ -1448,6 +1460,21 @@ async function pruneLocalFiles() {
   await meta.set('lastPrune', Date.now());
 }
 
+// ---------------------------------------------------------------- appearance (light / dark)
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const t = localStorage.getItem('theme') || 'auto';
+  const dark = t === 'dark' || (t === 'auto' && darkQuery.matches);
+  document.documentElement.classList.toggle('dark', dark);
+  document.querySelector('meta[name="theme-color"]').content = dark ? '#24231f' : '#f5c84c';
+  $('#theme').value = t;
+  renderList();
+  if (state.openId) { editor.load(state.openId); }
+}
+$('#theme').addEventListener('change', (e) => { localStorage.setItem('theme', e.target.value); applyTheme(); bc?.postMessage({ type: 'theme' }); });
+darkQuery.addEventListener('change', applyTheme);
+bc?.addEventListener('message', (e) => { if (e.data?.type === 'theme') applyTheme(); });
+
 // ---------------------------------------------------------------- startup
 function renderAll() { renderSidebar(); renderList(); renderSyncStatus(); }
 
@@ -1461,6 +1488,7 @@ async function init() {
   const savedTool = localStorage.getItem('inkTool');
   if (savedTool) document.querySelector(`.ink-tools [data-tool="${savedTool}"]`)?.click();
 
+  $('#theme').value = localStorage.getItem('theme') || 'auto';
   if (!state.token) { showLogin(); return; }
   showApp();
   renderAll();

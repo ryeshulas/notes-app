@@ -31,7 +31,7 @@ const CanvasItems = (() => {
     return parts;
   }
   function shapeSVG(it, ox, oy) {
-    const sw = it.sw || 4, c = it.c || '#1f1f1f';
+    const sw = it.sw || 4, c = (window.inkColor || ((x) => x))(it.c || '#1f1f1f');
     const fill = isBoxShape(it) && it.fill ? it.fill : 'none';
     const common = `stroke="${c}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"`;
     return shapeParts(it, ox, oy).map((p) => {
@@ -44,7 +44,7 @@ const CanvasItems = (() => {
   }
   // Draw a shape onto a 2D canvas (note-card previews).
   function drawShape(ctx, it) {
-    const sw = it.sw || 4, c = it.c || '#1f1f1f';
+    const sw = it.sw || 4, c = (window.inkColor || ((x) => x))(it.c || '#1f1f1f');
     ctx.save();
     ctx.lineWidth = sw; ctx.strokeStyle = c; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     for (const p of shapeParts(it)) {

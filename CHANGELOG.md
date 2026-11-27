@@ -2,6 +2,13 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.15.0
+- **Dark mode**: at the bottom of the folder menu choose Appearance: automatic (follows the phone/PC setting),
+  Light or Dark. Notes get darker versions of their colors; black ink, shapes and labels show as light ink
+  in dark mode (they're still black when printed or shown in light mode).
+- Shapes now always sit above photos (and below the ink), so a photo added later can't cover them.
+- Toolbar icons follow the light/dark text color.
+
 ## 0.14.0
 - **Keep on top** (⋯ menu, laptop with Chrome/Edge): opens the note in a small window that stays above all
   other windows, like Sticky Notes. One at a time; ⧉ pop-out windows still work for more.
