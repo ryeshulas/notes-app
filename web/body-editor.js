@@ -231,7 +231,35 @@ const BodyEditor = (() => {
     const lineEls = () => [...root.querySelectorAll('.line')];
     const textEl = (i) => lineEls()[i]?.querySelector('.txt');
     const indexOf = (el) => lineEls().indexOf(el.closest('.line'));
-    const changed = () => onChange && onChange();
+    // ---- undo / redo: snapshots of the whole body; bursts of typing are grouped ----
+    let hist = [], hpos = -1, lastPush = 0, applying = false;
+    const snapshot = () => ({ blocks: JSON.stringify(blocks), sel: liveSelection() || lastSel });
+    function record(kind) {
+      if (applying) return;
+      const snap = snapshot();
+      if (hpos >= 0 && hist[hpos].blocks === snap.blocks) { hist[hpos].sel = snap.sel; return; }
+      const now = Date.now();
+      if (kind === 'typing' && hpos > 0 && hist[hpos].kind === 'typing' && now - lastPush < 1000) {
+        hist[hpos] = { ...snap, kind };
+      } else {
+        hist = hist.slice(0, hpos + 1);
+        hist.push({ ...snap, kind });
+        if (hist.length > 200) hist.shift();
+        hpos = hist.length - 1;
+      }
+      lastPush = now;
+    }
+    function restoreState(st) {
+      applying = true;
+      blocks = JSON.parse(st.blocks).map(clean);
+      render();
+      try { if (st.sel) restoreSelection(st.sel); } catch { /* lines changed */ }
+      applying = false;
+      onChange && onChange();
+    }
+    function undo() { if (hpos > 0) { hpos--; restoreState(hist[hpos]); } }
+    function redo() { if (hpos < hist.length - 1) { hpos++; restoreState(hist[hpos]); } }
+    const changed = (kind = 'edit') => { readAll(); record(kind); onChange && onChange(); };
 
     function render() {
       root.textContent = '';
@@ -550,6 +578,8 @@ const BodyEditor = (() => {
       const mod = e.ctrlKey || e.metaKey;
       if (mod && !e.altKey) {
         const k = e.key.toLowerCase();
+        if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+        if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
         if (k === 'b' || k === 'i' || k === 'u') { e.preventDefault(); format(k, 1); return; }
         if (e.shiftKey && k === 'x') { e.preventDefault(); format('x', 1); return; }
       }
@@ -577,6 +607,8 @@ const BodyEditor = (() => {
       const i = indexOf(el);
       if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak') { e.preventDefault(); splitAt(i); return; }
       if (e.inputType === 'insertFromDrop' || e.inputType.startsWith('format')) { e.preventDefault(); return; }
+      if (e.inputType === 'historyUndo') { e.preventDefault(); undo(); return; }
+      if (e.inputType === 'historyRedo') { e.preventDefault(); redo(); return; }
       if (e.inputType === 'deleteContentBackward') {
         const c = caretOffset(el);
         if (c && c.collapsed && c.start === 0) { e.preventDefault(); backspaceAtStart(i); }
@@ -599,7 +631,7 @@ const BodyEditor = (() => {
       const i = indexOf(el);
       readLine(i);
       if (el.dataset.placeholder && blocks[i].s) delete el.dataset.placeholder;
-      if (!autoFormat(i)) changed();
+      if (!autoFormat(i)) changed('typing');
     });
 
     return {
@@ -608,7 +640,12 @@ const BodyEditor = (() => {
         lastIndex = 0;
         lastSel = null;
         render();
+        hist = [{ ...snapshot(), kind: 'load' }];
+        hpos = 0;
       },
+      undo, redo,
+      canUndo() { return hpos > 0; },
+      canRedo() { return hpos < hist.length - 1; },
       blocks() { readAll(); return blocks.map((b) => ({ ...b, r: b.r ? b.r.map((r) => ({ ...r })) : null })); },
       imageCount() { return blocks.filter((b) => b.t === 'img').length; },
       focused() { return root.contains(document.activeElement); },

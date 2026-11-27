@@ -94,6 +94,8 @@ const state = {
   syncing: false,
   pending: 0,
   online: navigator.onLine,
+  sort: localStorage.getItem('sortBy') || 'edited',
+  layout: localStorage.getItem('listView') || 'grid',
   lastSync: 0,
 };
 const keyOf = (kind, id) => `${kind}:${id}`;
@@ -422,7 +424,13 @@ function visibleNotes() {
     }
     if (match && !match(`${n.data.title || ''}\n${n.data.text || ''}`)) return false;
     return true;
-  }).sort((a, b) => (b.data.pinned - a.data.pinned) || (b.updated_at - a.updated_at));
+  }).sort((a, b) => (b.data.pinned - a.data.pinned) || compareNotes(a, b));
+}
+const titleOf = (n) => (n.data.title || (n.data.text || '').split('\n').find((l) => l.trim()) || '').trim().toLowerCase();
+function compareNotes(a, b) {
+  if (state.sort === 'created') return (b.data.created || b.updated_at) - (a.data.created || a.updated_at);
+  if (state.sort === 'title') return titleOf(a).localeCompare(titleOf(b)) || (b.updated_at - a.updated_at);
+  return b.updated_at - a.updated_at;
 }
 
 function noteDate(t) {
@@ -528,6 +536,18 @@ function thumbnail(strokes, items = []) {
 }
 
 $('#search').addEventListener('input', (e) => { state.query = e.target.value; renderList(); });
+
+// Sort order and card / compact-list view (remembered on this device)
+$('#sort-by').value = state.sort;
+$('#sort-by').addEventListener('change', (e) => { state.sort = e.target.value; localStorage.setItem('sortBy', state.sort); renderList(); });
+function applyLayout() {
+  $('#notes').classList.toggle('list', state.layout === 'list');
+  document.querySelectorAll('.view-toggle [data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === state.layout));
+}
+document.querySelectorAll('.view-toggle [data-view]').forEach((b) => b.addEventListener('click', () => {
+  state.layout = b.dataset.view; localStorage.setItem('listView', state.layout); applyLayout();
+}));
+applyLayout();
 // Folder menu. Pinned = a column beside the notes (default on laptops); otherwise a slide-out drawer.
 const phoneWidth = matchMedia('(max-width: 760px)');
 const isPinned = () => document.body.classList.contains('menu-pinned');
@@ -1120,6 +1140,10 @@ for (const [sel, fn] of [['#line-indent', () => body.indent()], ['#line-outdent'
   $(sel).addEventListener('pointerdown', (e) => e.preventDefault());
   $(sel).addEventListener('click', fn);
 }
+for (const [sel, fn] of [['#text-undo', () => body.undo()], ['#text-redo', () => body.redo()]]) {
+  $(sel).addEventListener('pointerdown', (e) => e.preventDefault());
+  $(sel).addEventListener('click', fn);
+}
 $('#clear-done').addEventListener('pointerdown', (e) => e.preventDefault());
 $('#clear-done').addEventListener('click', () => body.clearDone());
 $('#note-title').addEventListener('input', () => editor.queueSave());
@@ -1293,6 +1317,28 @@ async function restoreVersion(vid) {
   } catch (err) { alert(`Couldn't restore: ${err.message}`); }
 }
 
+// Keep on top: Chrome/Edge can show one small window that stays above all other windows.
+if (!('documentPictureInPicture' in window)) $('#pip-note').classList.add('hidden');
+$('#pip-note').addEventListener('click', async () => {
+  $('#note-menu').classList.add('hidden');
+  const id = state.openId;
+  if (!id) return;
+  await editor.flush();
+  if (state.draft && state.draft.id === id) { await save('note', id, editor.collect()); state.draft = null; }
+  try {
+    const pip = await documentPictureInPicture.requestWindow({ width: 400, height: 520 });
+    pip.document.title = getNote(id)?.data.title || 'Note';
+    pip.document.body.style.cssText = 'margin:0;height:100vh;overflow:hidden';
+    const frame = pip.document.createElement('iframe');
+    frame.src = `/?popout=1&note=${encodeURIComponent(id)}`;
+    frame.style.cssText = 'border:0;width:100%;height:100%;display:block';
+    pip.document.body.append(frame);
+    closeEditor();
+  } catch (err) {
+    alert(`Couldn't open an always-on-top window: ${err.message}`);
+  }
+});
+
 // Print / Save as PDF: hide empty drawing space, trim the drawing to what's on it.
 $('#print-note').addEventListener('click', () => { $('#note-menu').classList.add('hidden'); window.print(); });
 window.addEventListener('beforeprint', () => {
@@ -1361,8 +1407,18 @@ async function importRecords(doc) {
     await files.put(f.id, new Blob([bin], { type: f.type || 'image/jpeg' }));
     r.images++;
   }
-  const recs = [];
+  // Folders with the same name as one you already have are merged into it.
+  const byName = new Map(folders().map((f) => [f.data.name.trim().toLowerCase(), f.id]));
+  const remap = new Map();
   for (const x of doc.records) {
+    if (x.kind !== 'folder' || !x.data?.name) continue;
+    const existing = byName.get(x.data.name.trim().toLowerCase());
+    if (existing && existing !== x.id) remap.set(x.id, existing);
+  }
+  const recs = [];
+  for (const x0 of doc.records) {
+    if (x0.kind === 'folder' && remap.has(x0.id)) continue;
+    const x = x0.kind === 'note' && remap.has(x0.data?.folder) ? { ...x0, data: { ...x0.data, folder: remap.get(x0.data.folder) } } : x0;
     if (!['note', 'folder'].includes(x.kind) || typeof x.id !== 'string' || !x.data || x.data.purged) continue;
     const key = keyOf(x.kind, x.id);
     const local = state.records.get(key);

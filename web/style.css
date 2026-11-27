@@ -78,7 +78,22 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 #list-pane { overflow-y: auto; padding: 0 20px 80px; position: relative; }
 .bar { display: flex; gap: 8px; align-items: center; padding: 14px 0; position: sticky; top: 0; background: var(--bg); z-index: 2; }
 #search { flex: 1; }
-#list-title { font-size: 15px; color: var(--muted); font-weight: 600; margin: 4px 0 12px; }
+#list-title { font-size: 15px; color: var(--muted); font-weight: 600; margin: 0; }
+.list-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 12px; flex-wrap: wrap; }
+.list-opts { display: flex; align-items: center; gap: 8px; }
+.list-opts select { font-size: 13px; padding: 4px 6px; }
+.view-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+.view-toggle button { border: 0; background: none; padding: 5px 8px; color: var(--muted); fill: currentColor; display: flex; }
+.view-toggle button.on { background: #ffe9a8; color: var(--text); }
+/* Compact list view */
+.grid.list { grid-template-columns: 1fr; gap: 6px; }
+.grid.list .card { min-height: 0; max-height: none; padding: 9px 14px; display: grid; grid-template-columns: minmax(140px, 28%) 1fr auto 16px; align-items: center; gap: 4px 14px; }
+.grid.list .card h3 { margin: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid.list .card p { -webkit-line-clamp: 1; font-size: 13px; color: var(--muted); grid-column: 2; grid-row: 1; }
+.grid.list .card .meta { grid-column: 3; grid-row: 1; margin: 0; white-space: nowrap; }
+.grid.list .card canvas { display: none; }
+.grid.list .card .pin { position: static; grid-column: 4; grid-row: 1; justify-self: end; }
+.grid.list .section-title { margin: 8px 0 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
 .card { background: var(--c, var(--note)); border-radius: var(--radius); padding: 12px 14px; min-height: 110px; max-height: 260px;
   overflow: hidden; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); position: relative; border: 2px solid transparent; }
@@ -267,7 +282,11 @@ body:not(.menu-pinned) #sidebar.open { transform: none; }
   .pin-menu { display: none; }
   #list-pane { padding: 0 12px 100px; }
   /* Phone: one note per row, like a list */
-  .grid { grid-template-columns: 1fr; gap: 12px; }
+  .grid, .grid.list { grid-template-columns: 1fr; gap: 12px; }
+  .grid.list .card { display: block; padding: 16px 18px; }
+  .grid.list .card p { -webkit-line-clamp: 4; color: #4a463e; }
+  .grid.list .card canvas { display: block; }
+  .view-toggle { display: none; }
   .card { min-height: 0; max-height: 300px; padding: 16px 18px; border-radius: 18px; }
   .card h3 { font-size: 19px; margin-bottom: 2px; padding-right: 24px; }
   .card .meta { font-size: 13px; margin-bottom: 10px; }

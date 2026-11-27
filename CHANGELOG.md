@@ -2,6 +2,14 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.14.0
+- **Keep on top** (⋯ menu, laptop with Chrome/Edge): opens the note in a small window that stays above all
+  other windows, like Sticky Notes. One at a time; ⧉ pop-out windows still work for more.
+- **Undo / redo for text**: ↶ ↷ buttons above the text, or Ctrl+Z / Ctrl+Y. Covers typing (grouped), lists,
+  formatting and line changes.
+- **Sorting**: Last edited, Date created or Title A–Z. **Compact list view** on the laptop (toggle next to the sort).
+- Import merges folders with the same name as an existing folder instead of creating duplicates.
+
 ## 0.13.0
 - **Version history** (⋯ menu in a note → Version history). The server keeps earlier copies of each note:
   before an edit from another device, before a delete or restore, every 10 minutes while editing, and any

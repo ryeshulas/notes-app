@@ -47,7 +47,20 @@
         <input id="search" type="search" placeholder="Search notes (use * and ? as wildcards)" title="All words must match. * = any letters, ? = one letter, &quot;quotes&quot; for exact phrases">
         <button id="new-note" class="primary">+ New</button>
       </header>
-      <h2 id="list-title"></h2>
+      <div class="list-head">
+        <h2 id="list-title"></h2>
+        <div class="list-opts">
+          <select id="sort-by" title="Sort notes">
+            <option value="edited">Last edited</option>
+            <option value="created">Date created</option>
+            <option value="title">Title A–Z</option>
+          </select>
+          <div class="view-toggle" role="group" aria-label="View">
+            <button data-view="grid" title="Cards"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg></button>
+            <button data-view="list" title="Compact list"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="2" width="14" height="2.4" rx="1"/><rect x="1" y="6.8" width="14" height="2.4" rx="1"/><rect x="1" y="11.6" width="14" height="2.4" rx="1"/></svg></button>
+          </div>
+        </div>
+      </div>
       <div id="notes" class="grid"></div>
       <p id="empty" class="empty hidden">No notes here yet.</p>
       <button id="fab" class="fab mobile-only" aria-label="New note">✎</button>
@@ -65,6 +78,7 @@
       </header>
       <div id="note-menu" class="pick-menu note-menu hidden" role="menu">
         <button id="open-history">🕘 Version history</button>
+        <button id="pip-note" class="desktop-only">📌 Keep on top of other windows</button>
         <button id="print-note">🖨 Print / Save as PDF</button>
       </div>
       <div id="history" class="history hidden">
@@ -95,6 +109,8 @@
         </div>
         <div id="fmt-pop" class="fmt-pop hidden"></div>
         <div class="text-tools">
+          <button id="text-undo" class="tool" title="Undo (Ctrl+Z)">↶</button>
+          <button id="text-redo" class="tool" title="Redo (Ctrl+Y)">↷</button>
           <button data-line="ul" class="tool" title="Bulleted list">• List</button>
           <button data-line="ol" class="tool" title="Numbered list">1. List</button>
           <button data-line="todo" class="tool" title="Checklist">☑ Checklist</button>
