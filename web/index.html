@@ -61,6 +61,7 @@
       <div class="list-head">
         <h2 id="list-title"></h2>
         <div class="list-opts">
+          <button id="select-mode" class="sel-btn" title="Select several notes">☑ Select</button>
           <select id="sort-by" title="Sort notes">
             <option value="edited">Last edited</option>
             <option value="created">Date created</option>
@@ -71,6 +72,18 @@
             <button data-view="list" title="Compact list"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="2" width="14" height="2.4" rx="1"/><rect x="1" y="6.8" width="14" height="2.4" rx="1"/><rect x="1" y="11.6" width="14" height="2.4" rx="1"/></svg></button>
           </div>
         </div>
+      </div>
+      <div id="sel-bar" class="sel-bar hidden">
+        <span id="sel-count">0 selected</span>
+        <button id="sel-all" class="link">Select all</button>
+        <span class="sel-actions">
+          <select id="sel-move" title="Move to folder"><option value="">📁 Move to…</option></select>
+          <span id="sel-colors" title="Change color"></span>
+          <button id="sel-pin" title="Pin or unpin">📌 Pin</button>
+          <button id="sel-restore" class="trash-only">↩ Restore</button>
+          <button id="sel-delete" class="danger">🗑 Delete</button>
+          <button id="sel-cancel">Cancel</button>
+        </span>
       </div>
       <div id="notes" class="grid"></div>
       <p id="empty" class="empty hidden">No notes here yet.</p>

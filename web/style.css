@@ -84,6 +84,36 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 .list-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 12px; flex-wrap: wrap; }
 .list-opts { display: flex; align-items: center; gap: 8px; }
 .list-opts select { font-size: 13px; padding: 4px 6px; }
+.sel-btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 4px 10px; font-size: 13px; color: var(--text); }
+.sel-btn.on { background: #ffe9a8; }
+.sel-bar { position: sticky; top: 64px; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; background: #24221e; color: #fff;
+  border-radius: 12px; padding: 8px 12px; margin-bottom: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+.sel-bar .link { color: #ffd76a; padding: 0; }
+.sel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.sel-actions button { border: 0; border-radius: 8px; padding: 6px 10px; background: rgba(255,255,255,.12); color: #fff; font-size: 13px; }
+.sel-actions button.danger { background: #b3261e; }
+.sel-actions select { font-size: 13px; padding: 5px 6px; color: #24221e; background: #fff; }
+html.dark .sel-actions select { color: var(--text); background: #2c2b27; }
+.sel-actions button:disabled, .sel-actions select:disabled { opacity: .45; }
+#sel-colors { display: inline-flex; gap: 4px; }
+#sel-colors button { width: 22px; height: 22px; border-radius: 50%; padding: 0; border: 2px solid rgba(255,255,255,.5); }
+.sel-bar .trash-only { display: none; }
+.sel-bar.in-trash .trash-only { display: inline-block; }
+.sel-bar.in-trash #sel-move, .sel-bar.in-trash #sel-colors, .sel-bar.in-trash #sel-pin { display: none; }
+.card .check { position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(0,0,0,.35);
+  background: rgba(255,255,255,.8); display: none; align-items: center; justify-content: center; font-size: 13px; color: #fff; }
+.grid.selecting .card .check { display: flex; }
+.grid.selecting .card { padding-left: 38px; }
+.grid.selecting .card.picked { border-color: #1e5bd8; }
+.grid.selecting .card.picked .check { background: #1e5bd8; border-color: #1e5bd8; }
+.grid.list.selecting .card .check { position: static; grid-column: 1; grid-row: 1; }
+.grid.list.selecting .card { grid-template-columns: 22px minmax(120px, 26%) 1fr auto 16px; padding-left: 12px; }
+.grid.list.selecting .card h3 { grid-column: 2; }
+.grid.list.selecting .card p { grid-column: 3; }
+.grid.list.selecting .card .meta { grid-column: 4; }
+.grid.list.selecting .card .pin { grid-column: 5; }
+html.dark .sel-btn { background: #2c2b27; }
+html.dark .sel-btn.on { background: #5a4a14; }
 .view-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
 .view-toggle button { border: 0; background: none; padding: 5px 8px; color: var(--muted); fill: currentColor; display: flex; }
 .view-toggle button.on { background: #ffe9a8; color: var(--text); }
@@ -297,6 +327,8 @@ body:not(.menu-pinned) #sidebar.open { transform: none; }
   .grid.list .card p { -webkit-line-clamp: 4; color: #4a463e; }
   .grid.list .card canvas { display: block; }
   .view-toggle { display: none; }
+  .sel-bar { top: 60px; }
+  .sel-actions { margin-left: 0; }
   .card { min-height: 0; max-height: 300px; padding: 16px 18px; border-radius: 18px; }
   .card h3 { font-size: 19px; margin-bottom: 2px; padding-right: 24px; }
   .card .meta { font-size: 13px; margin-bottom: 10px; }

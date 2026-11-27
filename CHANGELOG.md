@@ -2,6 +2,12 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.17.0
+- **Select several notes**: tap **☑ Select** above the notes (or long-press a note on the phone/tablet,
+  Ctrl+click on the laptop; Shift+click selects a range). Then move them to a folder, change their color,
+  pin/unpin, or delete them together. **Select all** picks every note in the current view/search.
+  In the Trash you can restore or delete forever several at once.
+
 ## 0.16.0
 - **Lasso** tool (dashed loop): circle handwriting to select it, drag inside the box to move it, or use
   Duplicate / Delete. Works with undo.

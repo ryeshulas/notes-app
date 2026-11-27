@@ -104,6 +104,8 @@ const state = {
   online: navigator.onLine,
   sort: localStorage.getItem('sortBy') || 'edited',
   layout: localStorage.getItem('listView') || 'grid',
+  selecting: false,       // choosing several notes
+  picked: new Set(),
   lastSync: 0,
 };
 const keyOf = (kind, id) => `${kind}:${id}`;
@@ -360,7 +362,7 @@ function renderSidebar() {
       right.append(more);
     }
     b.append(name, right);
-    b.addEventListener('click', () => { state.view = it.id; if (drawerMode()) setDrawer(false); renderSidebar(); renderList(); });
+    b.addEventListener('click', () => { state.view = it.id; state.picked.clear(); if (drawerMode()) setDrawer(false); renderSidebar(); renderList(); });
     nav.append(b);
   }
   // folder picker in the editor
@@ -456,6 +458,9 @@ function renderList() {
   const grid = $('#notes');
   grid.textContent = '';
   const list = visibleNotes();
+  state.visibleIds = list.map((n) => n.id);
+  grid.classList.toggle('selecting', state.selecting);
+  renderSelBar();
   $('#empty').classList.toggle('hidden', list.length > 0);
   $('#empty').textContent = state.query.trim() ? 'No notes match your search.' : 'No notes here yet.';
   const hasPinned = state.view !== 'trash' && list.some((n) => n.data.pinned);
@@ -469,7 +474,9 @@ function renderList() {
       }
     }
     const card = document.createElement('div');
-    card.className = 'card' + (n.id === state.openId ? ' selected' : '');
+    card.className = 'card' + (n.id === state.openId ? ' selected' : '') + (state.picked.has(n.id) ? ' picked' : '');
+    const check = document.createElement('span'); check.className = 'check'; check.textContent = state.picked.has(n.id) ? '✓' : '';
+    card.append(check);
     card.style.setProperty('--c', noteColor(n.data.color));
     if (n.data.pinned) { const p = document.createElement('span'); p.className = 'pin'; p.textContent = '📌'; card.append(p); }
     const strokes = n.data.ink?.strokes || [];
@@ -488,7 +495,8 @@ function renderList() {
     const preview = n.data.title ? plain : plain.split('\n').slice(1).join('\n').trim();
     if (preview) { const p = document.createElement('p'); p.textContent = preview; card.append(p); }
     if (strokes.length || canvasItems.length) card.append(thumbnail(strokes, canvasItems));
-    if (state.view === 'trash') {
+    attachCardSelect(card, n);
+    if (state.view === 'trash' && !state.selecting) {
       const row = document.createElement('div'); row.className = 'restore';
       const r = document.createElement('button'); r.textContent = 'Restore';
       r.addEventListener('click', (e) => { e.stopPropagation(); save('note', n.id, n.data, false).then(() => { renderSidebar(); renderList(); }); });
@@ -500,7 +508,10 @@ function renderList() {
       row.append(r, ' ', d);
       card.append(row);
     } else {
-      card.addEventListener('click', () => openNote(n.id));
+      card.addEventListener('click', (e) => {
+        if (state.selecting || e.ctrlKey || e.metaKey || e.shiftKey) return;   // handled by selection
+        openNote(n.id);
+      });
     }
     grid.append(card);
   }
@@ -544,6 +555,123 @@ function thumbnail(strokes, items = []) {
 }
 
 $('#search').addEventListener('input', (e) => { state.query = e.target.value; renderList(); });
+
+// ---- selecting several notes: delete, move, recolor or pin them together ----
+let lastPicked = null;
+let ignoreClickUntil = 0;   // the finger lifting after a long-press isn't a tap
+function attachCardSelect(card, n) {
+  // Long-press (phones/tablets) starts selecting; Ctrl/Shift-click on the laptop.
+  let timer = null, startX = 0, startY = 0;
+  card.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' || state.selecting) return;
+    startX = e.clientX; startY = e.clientY;
+    timer = setTimeout(() => { timer = null; ignoreClickUntil = Date.now() + 700; navigator.vibrate?.(15); startSelecting(); togglePick(n.id); }, 550);
+  });
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  card.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - startX, e.clientY - startY) > 10) cancel(); });
+  card.addEventListener('pointerup', cancel);
+  card.addEventListener('pointercancel', cancel);
+  card.addEventListener('contextmenu', (e) => { if (matchMedia('(pointer: coarse)').matches) e.preventDefault(); });
+  card.addEventListener('click', (e) => {
+    if (Date.now() < ignoreClickUntil) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    if (e.shiftKey && lastPicked) {
+      startSelecting();
+      const ids = state.visibleIds, a = ids.indexOf(lastPicked), b = ids.indexOf(n.id);
+      if (a >= 0 && b >= 0) for (const id of ids.slice(Math.min(a, b), Math.max(a, b) + 1)) state.picked.add(id);
+      renderList();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) { startSelecting(); togglePick(n.id); return; }
+    if (state.selecting) togglePick(n.id);
+  });
+}
+function startSelecting() {
+  if (state.selecting) return;
+  state.selecting = true;
+  if (state.openId && !isPopout) closeEditor();
+  renderList();
+}
+function stopSelecting() { state.selecting = false; state.picked.clear(); lastPicked = null; renderList(); }
+function togglePick(id) {
+  if (state.picked.has(id)) state.picked.delete(id); else state.picked.add(id);
+  lastPicked = id;
+  renderList();
+}
+function renderSelBar() {
+  const bar = $('#sel-bar');
+  bar.classList.toggle('hidden', !state.selecting);
+  $('#select-mode').classList.toggle('on', state.selecting);
+  $('#select-mode').textContent = state.selecting ? '✕ Cancel' : '☑ Select';
+  if (!state.selecting) return;
+  const n = state.picked.size;
+  bar.classList.toggle('in-trash', state.view === 'trash');
+  $('#sel-count').textContent = n ? `${n} selected` : 'Tap notes to select them';
+  $('#sel-all').textContent = n && n === state.visibleIds.length ? 'Select none' : 'Select all';
+  bar.querySelectorAll('.sel-actions button:not(#sel-cancel), .sel-actions select').forEach((el) => { el.disabled = !n; });
+  $('#sel-delete').textContent = state.view === 'trash' ? '🗑 Delete forever' : '🗑 Delete';
+  const pickedNotes = [...state.picked].map((id) => getNote(id)).filter(Boolean);
+  $('#sel-pin').textContent = pickedNotes.length && pickedNotes.every((x) => x.data.pinned) ? '📌 Unpin' : '📌 Pin';
+  const sel = $('#sel-move');
+  sel.textContent = '';
+  sel.append(new Option('📁 Move to…', ''), new Option('Unfiled', '__none'));
+  folders().forEach((f) => sel.append(new Option(f.data.name, f.id)));
+}
+async function updatePicked(change) {
+  const ids = [...state.picked];
+  for (const id of ids) {
+    const n = getNote(id);
+    if (n) { const r = change(n); if (r) await save('note', id, r.data, r.deleted); }
+  }
+  return ids.length;
+}
+$('#select-mode').addEventListener('click', () => (state.selecting ? stopSelecting() : startSelecting()));
+$('#sel-cancel').addEventListener('click', stopSelecting);
+$('#sel-all').addEventListener('click', () => {
+  if (state.picked.size === state.visibleIds.length) state.picked.clear(); else state.visibleIds.forEach((id) => state.picked.add(id));
+  renderList();
+});
+$('#sel-move').addEventListener('change', async (e) => {
+  const v = e.target.value;
+  if (!v) return;
+  const folder = v === '__none' ? null : v;
+  await updatePicked((n) => ({ data: { ...n.data, folder }, deleted: n.deleted }));
+  stopSelecting(); renderSidebar();
+});
+(function buildSelColors() {
+  for (const [name, hex] of Object.entries(NOTE_COLORS)) {
+    const b = document.createElement('button');
+    b.style.background = hex;
+    b.title = `Make ${name}`;
+    b.addEventListener('click', async () => {
+      if (!state.picked.size) return;
+      await updatePicked((n) => ({ data: { ...n.data, color: name }, deleted: n.deleted }));
+      renderList();
+    });
+    $('#sel-colors').append(b);
+  }
+})();
+$('#sel-pin').addEventListener('click', async () => {
+  const all = [...state.picked].every((id) => getNote(id)?.data.pinned);
+  await updatePicked((n) => ({ data: { ...n.data, pinned: !all }, deleted: n.deleted }));
+  renderList();
+});
+$('#sel-delete').addEventListener('click', async () => {
+  const n = state.picked.size;
+  if (!n) return;
+  if (state.view === 'trash') {
+    if (!confirm(`Delete ${n} note${n === 1 ? '' : 's'} permanently? This can't be undone.`)) return;
+    await updatePicked(() => ({ data: { purged: true }, deleted: true }));
+  } else {
+    if (!confirm(`Move ${n} note${n === 1 ? '' : 's'} to the Trash?`)) return;
+    await updatePicked((x) => ({ data: x.data, deleted: true }));
+  }
+  stopSelecting(); renderSidebar();
+});
+$('#sel-restore').addEventListener('click', async () => {
+  await updatePicked((x) => ({ data: x.data, deleted: false }));
+  stopSelecting(); renderSidebar();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.selecting) stopSelecting(); });
 
 // Sort order and card / compact-list view (remembered on this device)
 $('#sort-by').value = state.sort;
