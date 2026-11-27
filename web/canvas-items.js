@@ -65,6 +65,54 @@ const CanvasItems = (() => {
       return p.pts.some((a, i) => { const b = p.pts[(i + 1) % p.pts.length]; return segDist(px, py, a[0], a[1], b[0], b[1]) <= tol; });
     });
   }
+  // Turn a shape into ordinary ink strokes that look the same (fill first, then outline), so the
+  // eraser can remove just part of it. Strokes are {t, c, w, p: [x, y, pressure, ...]}; pressure 0.65
+  // draws exactly width w.
+  function shapeToStrokes(it) {
+    const sw = it.sw || 4, c = it.c || '#1f1f1f', P = 0.65;
+    const pts = (list) => list.flatMap(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10, P]);
+    const fills = [], lines = [];
+    // Fill: overlapping horizontal lines across the inside of a polygon or ellipse.
+    const fillRows = (top, bottom, span, color) => {
+      const fw = 8, step = 6;
+      for (let y = top + fw / 2; y <= bottom - fw / 2 + 0.01; y += step) {
+        const r = span(y);
+        if (!r) continue;
+        let [x1, x2] = r;
+        x1 += fw / 2; x2 -= fw / 2;
+        if (x2 < x1) { const m = (x1 + x2) / 2; x1 = m; x2 = m + 0.1; }
+        fills.push({ t: 'pen', c: color, w: fw, p: pts([[x1, y], [x2, y]]) });
+      }
+    };
+    const polySpan = (poly) => (y) => {
+      const xs = [];
+      for (let i = 0; i < poly.length; i++) {
+        const [ax, ay] = poly[i], [bx, by] = poly[(i + 1) % poly.length];
+        if ((ay <= y && by > y) || (by <= y && ay > y)) xs.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
+      }
+      return xs.length >= 2 ? [Math.min(...xs), Math.max(...xs)] : null;
+    };
+    const filled = isBoxShape(it) && it.fill;
+    for (const p of shapeParts(it)) {
+      if (p.type === 'rect') {
+        const poly = [[p.x, p.y], [p.x + p.w, p.y], [p.x + p.w, p.y + p.h], [p.x, p.y + p.h]];
+        if (filled) fillRows(p.y, p.y + p.h, polySpan(poly), it.fill);
+        lines.push({ t: 'pen', c, w: sw, p: pts([...poly, poly[0]]) });
+      } else if (p.type === 'ellipse') {
+        const n = 72, poly = [];
+        for (let k = 0; k <= n; k++) { const a = (k / n) * Math.PI * 2; poly.push([p.cx + p.rx * Math.cos(a), p.cy + p.ry * Math.sin(a)]); }
+        if (filled && p.ry > 0) fillRows(p.cy - p.ry, p.cy + p.ry, (y) => { const t = 1 - ((y - p.cy) / p.ry) ** 2; if (t < 0) return null; const dx = p.rx * Math.sqrt(t); return [p.cx - dx, p.cx + dx]; }, it.fill);
+        lines.push({ t: 'pen', c, w: sw, p: pts(poly) });
+      } else if (p.type === 'line') {
+        lines.push({ t: 'pen', c, w: sw, p: pts([[p.x1, p.y1], [p.x2, p.y2]]) });
+      } else {
+        const ys = p.pts.map((q) => q[1]);
+        if (filled || p.type === 'head') fillRows(Math.min(...ys), Math.max(...ys), polySpan(p.pts), p.type === 'head' ? c : it.fill);
+        lines.push({ t: 'pen', c, w: sw, p: pts([...p.pts, p.pts[0]]) });
+      }
+    }
+    return [...fills, ...lines];
+  }
   function shapeSVG(it, ox, oy) {
     const sw = it.sw || 4, c = (window.inkColor || ((x) => x))(it.c || '#1f1f1f');
     const fill = isBoxShape(it) && it.fill ? it.fill : 'none';
@@ -457,16 +505,17 @@ const CanvasItems = (() => {
         changed();
         return out;
       },
-      // Eraser: remove shapes whose outline (or fill) is under the eraser circle.
-      eraseShapes(x, y, r) {
+      // Eraser: shapes under the eraser circle are taken off the item layer and returned as ink strokes
+      // (which the eraser then trims like handwriting).
+      takeShapesAsInk(x, y, r) {
         const hit = items.filter((it) => it.k === 'shape' && shapeHit(it, x, y, r));
-        if (!hit.length) return false;
+        if (!hit.length) return [];
         const gone = new Set(hit.map((it) => it.id));
         items = items.filter((it) => !gone.has(it.id));
         if (gone.has(selected)) selected = null;
         render();
         changed();
-        return true;
+        return hit.flatMap(shapeToStrokes);
       },
       // move everything down (used when an older note is converted to the combined page)
       shiftAll(dy) { items.forEach((it) => { it.y += dy; }); render(); },

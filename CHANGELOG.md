@@ -2,6 +2,9 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.25.0
+- The eraser now erases just the part of a shape under it (outline or fill), like handwriting. A shape the eraser has touched becomes regular ink, so afterwards it's selected with the Lasso rather than Select. Undo restores the original shape.
+
 ## 0.24.0 (Android app 1.0.1)
 - The eraser removes shapes again: touch a shape's outline (or anywhere inside a filled shape) to remove it. Undo brings it back.
 - Right-click (laptop) or long-press a shape, picture, label or lasso selection for **Copy, Cut, Duplicate, Delete**; right-click an empty spot in Write mode to **Paste here**.

@@ -955,6 +955,9 @@ const ink = {
   eraseAt([x, y]) {
     const r = this.eraserRadius();
     let changed = false;
+    // A shape under the eraser becomes ordinary ink, so only the part under the eraser goes.
+    const fromShapes = canvasItems.takeShapesAsInk(x, y, r);
+    if (fromShapes.length) { this.strokes = this.strokes.concat(fromShapes); changed = true; }
     const out = [];
     for (const st of this.strokes) {
       const pad = st.t === 'highlighter' ? st.w * 2 : st.w * 0.6;
@@ -974,7 +977,6 @@ const ink = {
       flush();
     }
     if (changed) { this.strokes = out; this.renderBase(); }
-    canvasItems.eraseShapes(x, y, r);
   },
 
   // Show the eraser circle while erasing (and when hovering with the eraser).
