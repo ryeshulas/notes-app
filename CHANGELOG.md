@@ -2,6 +2,11 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.22.0
+- Pictures are now added only in Write mode, with a labeled **Picture** button, so every picture can be dragged and resized freely. (The Type-mode Picture button is gone; pictures already in a note's text stay where they are.)
+- New pictures appear where you can see them: just below the text if it's on screen, otherwise at the top of the view, clear of the picture menu.
+- Bigger Type / Write buttons.
+
 ## 0.21.0
 - Pictures, shapes and labels can be moved again from either mode: press on one (S Pen, finger or mouse) and it switches to Write with Select and picks it up.
 - The S Pen lasso works when starting from Type mode.

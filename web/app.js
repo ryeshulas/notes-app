@@ -1194,7 +1194,7 @@ function pickImages(anchor, multiple, onFiles) {
   };
 }
 document.addEventListener('pointerdown', (e) => {
-  if (!e.target.closest('#pick-menu, #add-image, #text-image')) $('#pick-menu').classList.add('hidden');
+  if (!e.target.closest('#pick-menu, #add-image')) $('#pick-menu').classList.add('hidden');
 });
 async function readImage(file) {
   try { return await prepareImage(file); }
@@ -1208,10 +1208,13 @@ async function readImage(file) {
 $('#add-image').addEventListener('click', () => pickImages($('#add-image'), true, addCanvasImages));
 async function addCanvasImages(list) {
   if (!list.length || !state.openId) return;
-  // place it where the user is looking
-  const sc = $('#editor-scroll');
-  const canvasTop = ink.canvas.getBoundingClientRect().top - sc.getBoundingClientRect().top;
-  let y = Math.max(20, (20 - canvasTop) / ink.scale() + 20);
+  // Place it where you can see it: just below the text if that's on screen, otherwise at the top of the view.
+  const top = ink.canvas.getBoundingClientRect().top, sc = ink.scale();
+  const viewTop = $('.tools-head').getBoundingClientRect().bottom + 90; // room for the picture menu that opens
+  const viewBottom = $('#editor-scroll').getBoundingClientRect().bottom;
+  const textEnd = body.contentBottom();
+  const startAt = textEnd && textEnd > viewTop && textEnd < viewBottom - 80 ? textEnd + 10 : viewTop;
+  let y = Math.max(10, (startAt - top) / sc);
   for (const file of list) {
     try {
       const { blob, w, h } = await readImage(file);
@@ -1515,8 +1518,6 @@ const body = BodyEditor.create($('#note-body'), {
 });
 
 // Pictures in the text
-$('#text-image').addEventListener('pointerdown', (e) => e.preventDefault());
-$('#text-image').addEventListener('click', () => pickImages($('#text-image'), false, addTextImage));
 async function addTextImage([file]) {
   if (!file || !state.openId) return;
   try {
