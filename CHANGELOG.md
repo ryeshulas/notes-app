@@ -2,6 +2,14 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.18.0
+- **Resize text and drawing areas**: drag the divider between the text and the drawing to give the text more
+  room, or tap **Hide drawing** for notes that are mostly text (tap **Show drawing area** to bring it back).
+  Each note remembers its layout, and new notes start with the layout you used last.
+- Tapping empty space in the text area puts the cursor at the end of the text.
+- Bigger rows in the compact list view, especially on touch screens (tablet).
+- Fixed: notes without a pinned setting (e.g. some imported notes) could sort above the Pinned section.
+
 ## 0.17.0
 - **Select several notes**: tap **☑ Select** above the notes (or long-press a note on the phone/tablet,
   Ctrl+click on the laptop; Shift+click selects a range). Then move them to a folder, change their color,

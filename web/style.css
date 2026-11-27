@@ -119,13 +119,21 @@ html.dark .sel-btn.on { background: #5a4a14; }
 .view-toggle button.on { background: #ffe9a8; color: var(--text); }
 /* Compact list view */
 .grid.list { grid-template-columns: 1fr; gap: 6px; }
-.grid.list .card { min-height: 0; max-height: none; padding: 9px 14px; display: grid; grid-template-columns: minmax(140px, 28%) 1fr auto 16px; align-items: center; gap: 4px 14px; }
-.grid.list .card h3 { margin: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.grid.list .card p { -webkit-line-clamp: 1; font-size: 13px; color: var(--muted); grid-column: 2; grid-row: 1; }
+.grid.list .card { min-height: 48px; max-height: none; padding: 12px 16px; display: grid; grid-template-columns: minmax(140px, 28%) 1fr auto 16px; align-items: center; gap: 4px 14px; }
+.grid.list .card h3 { margin: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid.list .card p { -webkit-line-clamp: 1; font-size: 14px; color: var(--muted); grid-column: 2; grid-row: 1; }
 .grid.list .card .meta { grid-column: 3; grid-row: 1; margin: 0; white-space: nowrap; }
 .grid.list .card canvas { display: none; }
 .grid.list .card .pin { position: static; grid-column: 4; grid-row: 1; justify-self: end; }
 .grid.list .section-title { margin: 8px 0 0; }
+/* Touch screens (tablets): roomier list rows that are easy to tap */
+@media (pointer: coarse) {
+  .grid.list { gap: 10px; }
+  .grid.list .card { min-height: 64px; padding: 14px 18px; border-radius: 12px; }
+  .grid.list .card h3 { font-size: 17px; }
+  .grid.list .card p { font-size: 15px; -webkit-line-clamp: 2; }
+  .grid.list .card .meta { font-size: 13px; }
+}
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
 .card { background: var(--c, var(--note)); border-radius: var(--radius); padding: 12px 14px; min-height: 110px; max-height: 260px;
   overflow: hidden; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); position: relative; border: 2px solid transparent; }
@@ -173,7 +181,20 @@ html.dark .sel-btn.on { background: #5a4a14; }
 .text-tools { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 4px; }
 .text-tools .tool { font-size: 13px; padding: 4px 9px; background: rgba(255,255,255,.5); }
 .text-tools .tool.active { background: #fff; box-shadow: 0 0 0 1px var(--line); }
-.note-body { font-size: 15px; line-height: 1.45; padding: 4px 2px 8px; min-height: 2.6em; }
+.note-body { font-size: 15px; line-height: 1.45; padding: 4px 2px 8px; min-height: 2.6em; cursor: text; }
+/* Divider between the text and the drawing: drag it to resize, or hide the drawing */
+.split { display: flex; align-items: center; justify-content: center; gap: 10px; height: 26px; margin: 2px 0; cursor: ns-resize;
+  touch-action: none; user-select: none; position: relative; }
+.split::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed rgba(0,0,0,.18); }
+.split-grip { position: relative; width: 44px; height: 6px; border-radius: 3px; background: rgba(0,0,0,.22); }
+.split-btn { position: relative; border: 0; border-radius: 12px; padding: 3px 10px; font-size: 12px; background: rgba(255,255,255,.75); color: var(--muted); cursor: pointer; }
+.split-btn:hover { color: var(--text); }
+#editor.draw-hidden .ink-head, #editor.draw-hidden #ink-wrap { display: none; }
+#editor.draw-hidden .split { cursor: default; }
+#editor.draw-hidden .split-grip { display: none; }
+html.dark .split::before { border-color: rgba(255,255,255,.18); }
+html.dark .split-grip { background: rgba(255,255,255,.3); }
+html.dark .split-btn { background: rgba(0,0,0,.3); }
 .note-body .line { display: flex; align-items: flex-start; gap: 6px; }
 .note-body .marker { flex: 0 0 auto; min-width: 0; color: #4a463e; user-select: none; }
 .note-body .t-ul .marker, .note-body .t-ol .marker { min-width: 1.4em; text-align: right; padding-right: 2px; }
@@ -391,5 +412,7 @@ html.dark .theme-pick { color: var(--muted); }
   #ink { visibility: hidden !important; }
   .note-body .txt[data-placeholder]:empty::before { content: none; }
   #ink-wrap.print-empty { display: none !important; }
+  .split { display: none !important; }
+  .note-body { min-height: 0 !important; }
   .item.selected { outline: none !important; }
 }

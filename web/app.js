@@ -434,7 +434,7 @@ function visibleNotes() {
     }
     if (match && !match(`${n.data.title || ''}\n${n.data.text || ''}`)) return false;
     return true;
-  }).sort((a, b) => (b.data.pinned - a.data.pinned) || compareNotes(a, b));
+  }).sort((a, b) => (Number(!!b.data.pinned) - Number(!!a.data.pinned)) || compareNotes(a, b));
 }
 const titleOf = (n) => (n.data.title || (n.data.text || '').split('\n').find((l) => l.trim()) || '').trim().toLowerCase();
 function compareNotes(a, b) {
@@ -1442,6 +1442,7 @@ const editor = {
     $('#editor').style.setProperty('--c', noteColor(d.color));
     document.querySelectorAll('#note-colors .swatch').forEach((s) => s.classList.toggle('active', s.dataset.color === (d.color || 'yellow')));
     ink.load(d.ink);
+    applyNoteLayout(d.layout);
     if (isPopout) document.title = d.title || 'Note';
   },
   collect() {
@@ -1475,6 +1476,64 @@ const editor = {
   },
 };
 ink.onChange = () => editor.queueSave(600);
+
+// ---- text / drawing split ----
+// Each note keeps its layout: how much room the text gets (share of the screen) and whether the drawing shows.
+const DEFAULT_LAYOUT = { text: 0, draw: true };
+function lastLayout() { try { return { ...DEFAULT_LAYOUT, ...JSON.parse(localStorage.getItem('lastLayout') || '{}') }; } catch { return { ...DEFAULT_LAYOUT }; } }
+function applyNoteLayout(layout) {
+  const l = { ...DEFAULT_LAYOUT, ...(layout || {}) };
+  const sc = $('#editor-scroll');
+  const nb = $('#note-body');
+  $('#editor').classList.toggle('draw-hidden', !l.draw);
+  $('#draw-toggle').textContent = l.draw ? 'Hide drawing' : '✏️ Show drawing area';
+  if (!l.draw) {
+    // text only: the text fills the screen
+    nb.style.minHeight = `${Math.max(120, sc.clientHeight - nb.offsetTop - 60)}px`;
+  } else {
+    nb.style.minHeight = l.text ? `${Math.round(l.text * sc.clientHeight)}px` : '';
+    requestAnimationFrame(() => ink.resize());
+  }
+}
+function saveLayout(change) {
+  const n = getNote(state.openId);
+  if (!n) return;
+  const layout = { ...DEFAULT_LAYOUT, ...(n.data.layout || {}), ...change };
+  n.data = { ...n.data, layout };
+  localStorage.setItem('lastLayout', JSON.stringify(layout));
+  applyNoteLayout(layout);
+  editor.queueSave(300);
+}
+$('#draw-toggle').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('#draw-toggle').addEventListener('click', () => {
+  const n = getNote(state.openId);
+  saveLayout({ draw: !({ ...DEFAULT_LAYOUT, ...(n?.data.layout || {}) }).draw });
+});
+// Drag the divider to resize the text area
+$('#split').addEventListener('pointerdown', (e) => {
+  if ($('#editor').classList.contains('draw-hidden') || e.target.closest('button')) return;
+  e.preventDefault();
+  const sc = $('#editor-scroll'), nb = $('#note-body'), handle = $('#split');
+  const startY = e.clientY, startH = nb.offsetHeight;
+  try { handle.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  const move = (ev) => {
+    const h = Math.max(60, Math.min(sc.clientHeight * 0.95, startH + ev.clientY - startY));
+    nb.style.minHeight = `${h}px`;
+  };
+  const up = () => {
+    handle.removeEventListener('pointermove', move);
+    handle.removeEventListener('pointerup', up);
+    handle.removeEventListener('pointercancel', up);
+    const h = parseFloat(nb.style.minHeight) || nb.offsetHeight;
+    saveLayout({ text: Math.round((h / sc.clientHeight) * 100) / 100 });
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', up);
+  handle.addEventListener('pointercancel', up);
+});
+// Tapping empty space in the text area puts the cursor at the end
+$('#note-body').addEventListener('click', (e) => { if (e.target.id === 'note-body') body.focusEnd(); });
+window.addEventListener('resize', () => { const n = state.openId && getNote(state.openId); if (n) applyNoteLayout(n.data.layout); });
 
 // List buttons. pointerdown + preventDefault keeps the keyboard open on phones.
 document.querySelectorAll('.text-tools [data-line]').forEach((b) => {
@@ -1566,7 +1625,7 @@ function newNote(mode = 'text') {
   const id = uuid();
   state.draft = {
     key: keyOf('note', id), kind: 'note', id, updated_at: Date.now(), deleted: false,
-    data: { title: '', text: '', folder, color: 'yellow', pinned: false, ink: { h: DEFAULT_INK_H, strokes: [] }, created: Date.now() },
+    data: { title: '', text: '', folder, color: 'yellow', pinned: false, ink: { h: DEFAULT_INK_H, strokes: [] }, created: Date.now(), layout: lastLayout() },
   };
   openNote(id, { focus: mode === 'text' && !ink.penSeen ? 'text' : null });
 }
