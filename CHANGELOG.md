@@ -2,6 +2,17 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.29.0 (Android app 1.1.0)
+- **Reminders:** ⋯ → ⏰ Reminder… (quick picks or any date and time). The Android app shows a phone notification at that time, even when closed; in a browser it pops up while the app is open. Reminders show on the note and its card, and in a ⏰ Reminders list in the folder menu.
+- **Tags:** type #words in a note (e.g. #car, #receipts). Tags appear under **Tags** in the folder menu; tap a tag in a note for "Show notes tagged…".
+- **Text in pictures:** the Android app reads the text in pictures (photos, scans, PDF pages) in the background so search finds it. On a picture, **Aa Text** shows the text to copy or add to the note.
+- **Voice memos:** 🎙 in the Type toolbar records into the note.
+- **Templates:** 📄 Templates above the list: Meeting notes, Maintenance log, Ruled page (medium), Daily planner, Activity tracker (Date / Time / Note — **Add entry (now)** fills in the date and time). ⋯ → Ruled lines switches any note's paper.
+- **Links between notes:** type [[ and pick a note (or make a new one). Tap the link to open it; the linked note shows "Linked from".
+- **Checklists:** drag the ⠿ handle to reorder list items (sub-items come along). Checked items move to the bottom (setting in the folder menu).
+- **Scan a document** (Android app): Picture → Scan a document uses Google's scanner (edge detection, cleanup, several pages).
+- **PDFs:** Picture → PDF to write on (or share a PDF to Notes on Android). Each page becomes a locked page you can write over; 🔓 Unlock to move one.
+
 ## 0.28.0
 - **Search handwriting:** the Android app reads the handwriting in your notes in the background (on the device) and saves the words for search, on every device. Progress shows in the folder menu the first time. The note itself isn't changed, so its date and order stay the same.
 - **Web links** in typed text are underlined links. Put the cursor in one (tap it) and an **↗ Open** button appears; on the laptop Ctrl+click opens it directly.

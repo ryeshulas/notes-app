@@ -5,7 +5,11 @@
 'use strict';
 
 const BodyEditor = (() => {
-  const TYPES = ['p', 'ul', 'ol', 'todo', 'img'];
+  const TYPES = ['p', 'ul', 'ol', 'todo', 'img', 'audio', 'table'];
+  // Lines that are objects (picture, voice memo, table) rather than editable text.
+  const OBJ = new Set(['img', 'audio', 'table']);
+  const isObj = (b) => !!b && OBJ.has(b.t);
+  const fmtDur = (sec) => { sec = Math.round(sec || 0); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
   const IMG_SIZES = { s: 33, m: 66, l: 100 };
   const MAX_INDENT = 4;
   const BULLETS = ['•', '◦', '▪', '•', '◦'];
@@ -112,6 +116,8 @@ const BodyEditor = (() => {
     return blocks.map((b, k) => {
       const pad = '  '.repeat(b.i || 0);
       if (b.t === 'img') return '[image]';
+      if (b.t === 'audio') return `[voice memo ${fmtDur(b.dur)}]`;
+      if (b.t === 'table') return [b.cols, ...b.rows].map((r) => r.join(' | ')).join('\n');
       return b.t === 'p' ? pad + b.s : `${pad}${lab[k]} ${b.s}`;
     }).join('\n').replace(/\s+$/, '');
   }
@@ -139,6 +145,16 @@ const BodyEditor = (() => {
     if (out.t === 'img') {
       if (typeof b.file !== 'string' || !b.file) return { t: 'p', s: '', d: false, i: 0, r: null };
       Object.assign(out, { s: '', r: null, i: 0, file: b.file, z: IMG_SIZES[b.z] ? b.z : 'l' });
+    }
+    if (out.t === 'audio') {
+      if (typeof b.file !== 'string' || !b.file) return { t: 'p', s: '', d: false, i: 0, r: null };
+      Object.assign(out, { s: '', r: null, i: 0, file: b.file, dur: Number(b.dur) || 0 });
+    }
+    if (out.t === 'table') {
+      const cols = Array.isArray(b.cols) && b.cols.length ? b.cols.slice(0, 8).map((c) => String(c ?? '')) : ['', ''];
+      const rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 2000)
+        .map((r) => cols.map((_, k) => String((Array.isArray(r) ? r[k] : '') ?? '').replace(/\n/g, ' ')));
+      Object.assign(out, { s: '', r: null, i: 0, cols, rows: rows.length ? rows : [cols.map(() => '')], kind: typeof b.kind === 'string' ? b.kind : '' });
     }
     return out;
   }
@@ -213,7 +229,7 @@ const BodyEditor = (() => {
   const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
   function hrefOf(text) { return /^www\./i.test(text) ? `https://${text}` : text; }
   function linkify(el) {
-    el.querySelectorAll('a.lnk').forEach((a) => a.replaceWith(...a.childNodes));
+    el.querySelectorAll('a.lnk, a.tag, a.nlink').forEach((a) => a.replaceWith(...a.childNodes));
     el.normalize();
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     const nodes = [];
@@ -240,6 +256,30 @@ const BodyEditor = (() => {
       parts.push(text.slice(last));
       node.replaceWith(...parts.filter((p) => p !== ''));
     }
+    // #tags and [[links to other notes]] (not inside web links)
+    const w2 = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const nodes2 = [];
+    while (w2.nextNode()) if (!w2.currentNode.parentElement.closest('a.lnk')) nodes2.push(w2.currentNode);
+    const RE = /\[\[([^\[\]\n]{1,80})\]\]|(^|[^\w&#/])#([A-Za-z][\w-]{1,39})(?=$|[\s.,;!?)])/g;
+    for (const node of nodes2) {
+      const text = node.data;
+      RE.lastIndex = 0;
+      let m, last = 0;
+      const parts = [];
+      while ((m = RE.exec(text))) {
+        const start = m[1] !== undefined ? m.index : m.index + m[2].length;
+        parts.push(text.slice(last, start));
+        const a = document.createElement('a');
+        if (m[1] !== undefined) { a.className = 'nlink'; a.dataset.title = m[1].trim(); a.textContent = m[0]; }
+        else { a.className = 'tag'; a.dataset.tag = m[3].toLowerCase(); a.textContent = `#${m[3]}`; }
+        a.href = '#';
+        parts.push(a);
+        last = start + a.textContent.length;
+      }
+      if (!parts.length) continue;
+      parts.push(text.slice(last));
+      node.replaceWith(...parts.filter((p) => p !== ''));
+    }
   }
   function renderRuns(el, runs) {
     el.textContent = '';
@@ -255,7 +295,7 @@ const BodyEditor = (() => {
   }
 
   // ---------------------------------------------------------------- the editor
-  function create(root, { onChange, onSelectionStyle, onPick, fileURL, placeholder = 'Type here…' } = {}) {
+  function create(root, { onChange, onSelectionStyle, onPick, fileURL, onTag, onNoteLink, onLinkQuery, checkedToBottom, placeholder = 'Type here…' } = {}) {
     let blocks = [clean({ t: 'p', s: '' })];
     let lastIndex = 0;
     let lastSel = null;   // {a:{line,off}, f:{line,off}} — kept so toolbar controls work after focus moves
@@ -298,6 +338,8 @@ const BodyEditor = (() => {
       const lab = labels(blocks);
       blocks.forEach((b, i) => {
         if (b.t === 'img') { root.append(renderImage(b, i)); return; }
+        if (b.t === 'audio') { root.append(renderAudio(b, i)); return; }
+        if (b.t === 'table') { root.append(renderTable(b, i)); return; }
         const line = document.createElement('div');
         line.className = `line t-${b.t}${b.t === 'todo' && b.d ? ' done' : ''}`;
         line.style.paddingLeft = `${(b.i || 0) * 1.6}em`;
@@ -310,8 +352,23 @@ const BodyEditor = (() => {
           cb.type = 'checkbox';
           cb.checked = b.d;
           cb.setAttribute('aria-label', 'Done');
-          cb.addEventListener('change', () => { blocks[i].d = cb.checked; line.classList.toggle('done', cb.checked); changed(); });
+          cb.addEventListener('change', () => {
+            readAll();
+            blocks[i].d = cb.checked;
+            line.classList.toggle('done', cb.checked);
+            if (checkedToBottom && checkedToBottom()) { if (sortChecked(i)) { render(); changed(); return; } }
+            changed();
+          });
           marker.append(cb);
+        }
+        if (b.t !== 'p') {
+          const grip = document.createElement('span');
+          grip.className = 'grip';
+          grip.contentEditable = 'false';
+          grip.title = 'Drag to move';
+          grip.textContent = '⠿';
+          grip.addEventListener('pointerdown', (e) => startDrag(e, i));
+          line.append(grip);
         }
         const txt = document.createElement('div');
         txt.className = 'txt';
@@ -323,6 +380,225 @@ const BodyEditor = (() => {
         line.append(marker, txt);
         root.append(line);
       });
+    }
+
+    // ---- voice memo line ----
+    function removeObject(i) {
+      readAll();
+      blocks.splice(i, 1);
+      if (!blocks.length) blocks.push(clean({ t: 'p', s: '' }));
+      render();
+      const target = textLine(Math.min(i, blocks.length - 1), -1);
+      if (target >= 0) focusLine(target, 'end');
+      changed();
+    }
+    function renderAudio(b, i) {
+      const line = document.createElement('div');
+      line.className = 'line t-audio';
+      line.contentEditable = 'false';
+      const box = document.createElement('div');
+      box.className = 'body-audio';
+      const label = document.createElement('span');
+      label.className = 'audio-label';
+      label.textContent = `🎙 Voice memo · ${fmtDur(b.dur)}`;
+      const audio = document.createElement('audio');
+      audio.controls = true;
+      audio.preload = 'metadata';
+      if (fileURL) fileURL(b.file).then((u) => { if (u) audio.src = u; else label.textContent += ' (not downloaded yet)'; });
+      const del = document.createElement('button');
+      del.className = 'audio-del';
+      del.title = 'Delete this voice memo';
+      del.textContent = '🗑';
+      del.addEventListener('click', (e) => { e.stopPropagation(); if (confirm('Delete this voice memo?')) removeObject(i); });
+      box.append(label, audio, del);
+      line.append(box);
+      return line;
+    }
+
+    // ---- table (used by the activity tracker and maintenance log templates) ----
+    function renderTable(b, i) {
+      const line = document.createElement('div');
+      line.className = 'line t-table';
+      line.contentEditable = 'false';
+      const wrap = document.createElement('div');
+      wrap.className = 'body-table';
+      const table = document.createElement('table');
+      const cell = (tag, text, r, c) => {
+        const el = document.createElement(tag);
+        el.className = 'cell';
+        el.contentEditable = 'plaintext-only';
+        el.textContent = text;
+        el.dataset.r = r; el.dataset.c = c;
+        return el;
+      };
+      const thead = document.createElement('thead');
+      const hr = document.createElement('tr');
+      b.cols.forEach((t, c) => hr.append(cell('th', t, -1, c)));
+      hr.append(document.createElement('th'));
+      thead.append(hr);
+      const tbody = document.createElement('tbody');
+      b.rows.forEach((row, r) => {
+        const tr = document.createElement('tr');
+        row.forEach((t, c) => tr.append(cell('td', t, r, c)));
+        const x = document.createElement('td');
+        x.className = 'row-del';
+        const xb = document.createElement('button');
+        xb.textContent = '✕';
+        xb.title = 'Delete this row';
+        xb.addEventListener('click', () => {
+          blocks[i].rows.splice(r, 1);
+          if (!blocks[i].rows.length) blocks[i].rows.push(blocks[i].cols.map(() => ''));
+          render(); changed();
+        });
+        x.append(xb);
+        tr.append(x);
+        tbody.append(tr);
+      });
+      table.append(thead, tbody);
+      table.addEventListener('input', (e) => {
+        const el = e.target.closest('.cell');
+        if (!el) return;
+        const r = +el.dataset.r, c = +el.dataset.c;
+        const v = el.textContent.replace(/\n/g, ' ');
+        if (r < 0) blocks[i].cols[c] = v; else blocks[i].rows[r][c] = v;
+        changed('typing');
+      });
+      table.addEventListener('keydown', (e) => {
+        const el = e.target.closest('.cell');
+        if (!el) return;
+        const r = +el.dataset.r, c = +el.dataset.c;
+        const go = (rr, cc) => { const t = table.querySelector(`.cell[data-r="${rr}"][data-c="${cc}"]`); if (t) { setCaret(t, t.textContent.length); return true; } return false; };
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (!go(r + 1, c)) { addRow(i, false); go(r + 1, 0); }
+        } else if (e.key === 'Tab') {
+          e.preventDefault();
+          const n = b.cols.length;
+          if (e.shiftKey) { if (!go(r, c - 1)) go(r - 1, n - 1); }
+          else if (!go(r, c + 1) && !go(r + 1, 0)) { addRow(i, false); go(r + 1, 0); }
+        }
+      });
+      wrap.append(table);
+      const bar = document.createElement('div');
+      bar.className = 'table-tools';
+      const add = document.createElement('button');
+      const stamp = b.cols.some((c) => /^(date|time)$/i.test(c.trim()));
+      add.textContent = stamp ? '＋ Add entry (now)' : '＋ Add row';
+      add.title = stamp ? 'Add a row with today\'s date and the time filled in' : 'Add a row';
+      add.addEventListener('click', () => {
+        const r = addRow(i, stamp);
+        const target = table.ownerDocument && root.querySelectorAll('.line')[i]?.querySelector(`.cell[data-r="${r}"][data-c="${b.cols.findIndex((c) => !/^(date|time)$/i.test(c.trim()))}"]`);
+        if (target) setCaret(target, target.textContent.length);
+      });
+      const del = document.createElement('button');
+      del.textContent = '🗑 Table';
+      del.className = 'danger';
+      del.title = 'Delete the whole table';
+      del.addEventListener('click', () => { if (confirm('Delete this table?')) removeObject(i); });
+      bar.append(add, del);
+      wrap.append(bar);
+      line.append(wrap);
+      return line;
+    }
+    // Add a row to a table; with stamp the Date/Time columns are filled with now. Returns the row index.
+    function addRow(i, stamp) {
+      const b = blocks[i];
+      const now = new Date();
+      const row = b.cols.map((c) => {
+        if (!stamp) return '';
+        if (/^date$/i.test(c.trim())) return now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        if (/^time$/i.test(c.trim())) return now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        return '';
+      });
+      // Fill an empty last row instead of adding another.
+      const last = b.rows[b.rows.length - 1];
+      let r;
+      if (last && last.every((v) => !v.trim())) { b.rows[b.rows.length - 1] = row; r = b.rows.length - 1; }
+      else { b.rows.push(row); r = b.rows.length - 1; }
+      render();
+      changed();
+      return r;
+    }
+
+    // ---- reordering list / checklist items by dragging the ⠿ handle ----
+    // An item moves together with its sub-items (the lines after it that are indented further).
+    function subtreeEnd(i) {
+      let j = i + 1;
+      while (j < blocks.length && !isObj(blocks[j]) && (blocks[j].i || 0) > (blocks[i].i || 0) && blocks[j].t !== 'p') j++;
+      return j;
+    }
+    function moveBlocks(from, to) {     // move blocks[from .. subtreeEnd) so it starts at index `to` (in the original numbering)
+      const end = subtreeEnd(from);
+      if (to >= from && to <= end) return false;
+      const chunk = blocks.splice(from, end - from);
+      const at = to > from ? to - chunk.length : to;
+      blocks.splice(at, 0, ...chunk);
+      return at;
+    }
+    function startDrag(e, i) {
+      if (e.button !== undefined && e.button !== 0) return;
+      e.preventDefault();
+      readAll();
+      const lines = [...root.querySelectorAll('.line')];
+      const src = lines[i];
+      src.classList.add('dragging');
+      const marker = document.createElement('div');
+      marker.className = 'drop-marker';
+      root.append(marker);
+      let target = null;
+      const move = (ev) => {
+        const y = ev.clientY;
+        let best = blocks.length;
+        for (let k = 0; k < lines.length; k++) {
+          const r = lines[k].getBoundingClientRect();
+          if (y < r.top + r.height / 2) { best = k; break; }
+        }
+        target = best;
+        const rootR = root.getBoundingClientRect();
+        const ref = lines[best] ? lines[best].getBoundingClientRect().top : lines[lines.length - 1].getBoundingClientRect().bottom;
+        marker.style.top = `${ref - rootR.top - 1}px`;
+        // scroll near the edges
+        const sc = root.closest('#editor-scroll');
+        if (sc) { const sr = sc.getBoundingClientRect(); if (y < sr.top + 60) sc.scrollTop -= 12; else if (y > sr.bottom - 60) sc.scrollTop += 12; }
+      };
+      const up = () => {
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', up);
+        document.removeEventListener('pointercancel', up);
+        marker.remove();
+        src.classList.remove('dragging');
+        if (target === null) return;
+        const at = moveBlocks(i, target);
+        if (at === false) return;
+        // The moved item takes the indent level of its new neighbourhood (never deeper than the line above allows).
+        const prev = blocks[at - 1];
+        const maxIndent = !prev || isObj(prev) ? 0 : Math.min(MAX_INDENT, (prev.i || 0) + (prev.t === 'p' ? 0 : 1));
+        const shift = Math.min(0, maxIndent - (blocks[at].i || 0));
+        if (shift) { const end = subtreeEnd(at); for (let k = at; k < end; k++) blocks[k].i = Math.max(0, (blocks[k].i || 0) + shift); }
+        structural(at, 'end');
+      };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up);
+      document.addEventListener('pointercancel', up);
+    }
+    // Move a just-checked item to the bottom of its checklist (or an unchecked one back above the checked ones).
+    function sortChecked(i) {
+      const lvl = blocks[i].i || 0;
+      let a = i, z = i;
+      const sameList = (k) => blocks[k] && blocks[k].t === 'todo' && (blocks[k].i || 0) >= lvl;
+      while (a - 1 >= 0 && sameList(a - 1)) a--;
+      while (z + 1 < blocks.length && sameList(z + 1)) z++;
+      const sibs = [];
+      for (let k = a; k <= z; k++) if ((blocks[k].i || 0) === lvl) sibs.push(k);
+      const end = z + 1;
+      if (blocks[i].d) {
+        const lastSib = sibs[sibs.length - 1];
+        if (lastSib === i) return false;
+        return moveBlocks(i, end) !== false;
+      }
+      const firstDone = sibs.find((k) => k !== i && blocks[k].d);
+      if (firstDone === undefined || firstDone > i) return false;
+      return moveBlocks(i, firstDone) !== false;
     }
 
     function renderImage(b, i) {
@@ -356,7 +632,7 @@ const BodyEditor = (() => {
         if (!blocks.length) blocks.push(clean({ t: 'p', s: '' }));
         render();
         const target = Math.min(i, blocks.length - 1);
-        if (blocks[target].t !== 'img') focusLine(target, 0);
+        if (!isObj(blocks[target])) focusLine(target, 0);
         changed();
       });
       tools.append(del);
@@ -370,7 +646,7 @@ const BodyEditor = (() => {
     }
     // nearest text line in a direction (skips image lines)
     function textLine(i, dir) {
-      for (let j = i; j >= 0 && j < blocks.length; j += dir) if (blocks[j].t !== 'img') return j;
+      for (let j = i; j >= 0 && j < blocks.length; j += dir) if (!isObj(blocks[j])) return j;
       return -1;
     }
 
@@ -381,7 +657,7 @@ const BodyEditor = (() => {
       setCaret(el, offset === 'end' ? blocks[i].s.length : offset);
     }
     function readLine(i) {
-      if (blocks[i]?.t === 'img') return;
+      if (!blocks[i] || isObj(blocks[i])) return;
       const el = textEl(i);
       if (el) setRuns(blocks[i], readRuns(el));
     }
@@ -425,7 +701,7 @@ const BodyEditor = (() => {
       if (b.i > 0) { b.i--; return structural(i, 0); }
       if (b.t !== 'p') { b.t = 'p'; b.d = false; return structural(i, 0); }
       if (i === 0) return;
-      if (blocks[i - 1].t === 'img') {
+      if (isObj(blocks[i - 1])) {
         // an empty line right after a picture is removed; otherwise just hop above the picture
         if (!b.s) { blocks.splice(i, 1); render(); const up = textLine(i - 1, -1); if (up >= 0) focusLine(up, 'end'); changed(); }
         else { const up = textLine(i - 1, -1); if (up >= 0) focusLine(up, 'end'); }
@@ -440,7 +716,7 @@ const BodyEditor = (() => {
     }
 
     function deleteAtEnd(i) {
-      if (i >= blocks.length - 1 || blocks[i + 1].t === 'img') return;
+      if (i >= blocks.length - 1 || isObj(blocks[i + 1])) return;
       readLine(i); readLine(i + 1);
       const len = blocks[i].s.length;
       setRuns(blocks[i], [...runsOf(blocks[i]), ...runsOf(blocks[i + 1])]);
@@ -453,7 +729,7 @@ const BodyEditor = (() => {
       const el = textEl(i);
       const pos = (el && caretOffset(el)?.start) ?? blocks[i].s.length;
       const b = blocks[i];
-      const maxHere = i === 0 || blocks[i - 1].t === 'img' ? 0 : Math.min(MAX_INDENT, (blocks[i - 1].i || 0) + 1);
+      const maxHere = i === 0 || isObj(blocks[i - 1]) ? 0 : Math.min(MAX_INDENT, (blocks[i - 1].i || 0) + 1);
       const next = Math.max(0, Math.min(maxHere, (b.i || 0) + delta));
       if (next === b.i) return;
       b.i = next;
@@ -533,15 +809,16 @@ const BodyEditor = (() => {
 
     root.addEventListener('focusout', (e) => {
       const el = e.target.closest?.('.txt');
-      if (el && !el.querySelector('.lnk') && !URL_RE.test(el.textContent)) { URL_RE.lastIndex = 0; return; }
-      URL_RE.lastIndex = 0;
       if (el) linkify(el);
     });
     root.addEventListener('click', (e) => {
-      const a = e.target.closest?.('a.lnk');
+      const a = e.target.closest?.('a.lnk, a.tag, a.nlink');
       if (!a) return;
       e.preventDefault();
-      if (e.ctrlKey || e.metaKey) window.open(a.href, '_blank', 'noopener');
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (a.classList.contains('tag')) onTag && onTag(a.dataset.tag);
+      else if (a.classList.contains('nlink')) onNoteLink && onNoteLink(a.dataset.title);
+      else window.open(a.href, '_blank', 'noopener');
     });
     // A small "Open link" button appears when the cursor is in a link.
     const linkTip = document.createElement('a');
@@ -549,18 +826,31 @@ const BodyEditor = (() => {
     linkTip.target = '_blank';
     linkTip.rel = 'noopener';
     linkTip.addEventListener('pointerdown', (e) => e.preventDefault());
-    linkTip.addEventListener('click', () => linkTip.classList.add('hidden'));
+    linkTip.addEventListener('click', (e) => {
+      linkTip.classList.add('hidden');
+      if (linkTip.dataset.kind === 'tag') { e.preventDefault(); onTag && onTag(linkTip.dataset.value); }
+      else if (linkTip.dataset.kind === 'note') { e.preventDefault(); onNoteLink && onNoteLink(linkTip.dataset.value); }
+    });
     document.body.append(linkTip);
     const hideTip = () => linkTip.classList.add('hidden');
     document.addEventListener('selectionchange', () => {
       const sel = getSelection();
       const n = sel.rangeCount ? sel.anchorNode : null;
-      const a = n && (n.nodeType === 1 ? n : n.parentElement)?.closest?.('a.lnk');
+      const a = n && (n.nodeType === 1 ? n : n.parentElement)?.closest?.('a.lnk, a.tag, a.nlink');
       if (!a || !root.contains(a)) { hideTip(); return; }
-      linkTip.href = a.href;
-      let host = a.href;
-      try { host = new URL(a.href).hostname; } catch { /* keep the full address */ }
-      linkTip.textContent = `↗ Open ${host}`;
+      if (a.classList.contains('tag')) {
+        linkTip.dataset.kind = 'tag'; linkTip.dataset.value = a.dataset.tag; linkTip.removeAttribute('href'); linkTip.href = '#';
+        linkTip.textContent = `# Show notes tagged #${a.dataset.tag}`;
+      } else if (a.classList.contains('nlink')) {
+        linkTip.dataset.kind = 'note'; linkTip.dataset.value = a.dataset.title; linkTip.href = '#';
+        linkTip.textContent = `↗ Open note “${a.dataset.title}”`;
+      } else {
+        linkTip.dataset.kind = 'web';
+        linkTip.href = a.href;
+        let host = a.href;
+        try { host = new URL(a.href).hostname; } catch { /* keep the full address */ }
+        linkTip.textContent = `↗ Open ${host}`;
+      }
       linkTip.classList.remove('hidden');
       const r = a.getBoundingClientRect();
       const w = linkTip.offsetWidth;
@@ -661,7 +951,7 @@ const BodyEditor = (() => {
     function pickedText() {
       if (!picked) return '';
       readAll();
-      return textFromBlocks(blocks.slice(picked[0], picked[1] + 1).filter((b) => b.t !== 'img'));
+      return textFromBlocks(blocks.slice(picked[0], picked[1] + 1).filter((b) => b.t !== 'img' && b.t !== 'audio'));
     }
     // Remove the picked lines; with keepLine an empty line is left in their place. Returns that line's index.
     function deletePicked(keepLine) {
@@ -672,7 +962,7 @@ const BodyEditor = (() => {
       blocks.splice(a, b - a + 1, ...(keepLine ? [clean({ t: 'p', s: '' })] : []));
       if (!blocks.length) blocks = [clean({ t: 'p', s: '' })];
       let j = Math.min(a, blocks.length - 1);
-      if (blocks[j].t === 'img') j = Math.max(0, textLine(j, -1));
+      if (isObj(blocks[j])) j = Math.max(0, textLine(j, -1));
       structural(j, 0);
       showPicked();
       return j;
@@ -788,6 +1078,14 @@ const BodyEditor = (() => {
       readLine(i);
       if (el.dataset.placeholder && blocks[i].s) delete el.dataset.placeholder;
       if (!autoFormat(i)) changed('typing');
+      // "[[" starts a link to another note: offer matching titles.
+      if (onLinkQuery) {
+        const off = caretOffset(el)?.start ?? 0;
+        const m = /\[\[([^\[\]\n]{0,40})$/.exec(blocks[i]?.s.slice(0, off) || '');
+        const sel = getSelection();
+        const rect = sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : el.getBoundingClientRect();
+        onLinkQuery(m ? m[1] : null, rect);
+      }
     });
 
     return {
@@ -855,8 +1153,27 @@ const BodyEditor = (() => {
         const img = clean({ t: 'img', file, z: 'l' });
         if (at === 0) blocks.splice(0, 0, img); else blocks.splice(at, 0, img);
         const next = at + 1;
-        if (!blocks[next] || blocks[next].t === 'img') blocks.splice(next, 0, clean({ t: 'p', s: '' }));
+        if (!blocks[next] || isObj(blocks[next])) blocks.splice(next, 0, clean({ t: 'p', s: '' }));
         structural(next, 0);
+      },
+      // Insert a voice memo, table, etc. after the line being edited, with a text line after it.
+      insertObject(obj) {
+        readAll();
+        const i = Math.min(lastIndex, blocks.length - 1);
+        const at = blocks.length === 1 && blocks[0].t === 'p' && !blocks[0].s ? 0 : i + 1;
+        blocks.splice(at, 0, clean(obj));
+        const next = at + 1;
+        if (!blocks[next] || isObj(blocks[next])) blocks.splice(next, 0, clean({ t: 'p', s: '' }));
+        structural(next, 0);
+      },
+      // Replace the "[[query" just typed with "[[Title]]".
+      completeLink(title, queryLen) {
+        const i = lastIndex;
+        const el = textEl(i);
+        if (!el) return;
+        const off = caretOffset(el)?.start ?? 0;
+        restoreSelection({ a: { line: i, off: Math.max(0, off - queryLen - 2) }, f: { line: i, off } });
+        document.execCommand('insertText', false, `[[${title}]] `);
       },
       current() { return Math.min(lastIndex, blocks.length - 1); },
       currentType() { const i = this.current(); return blocks[i] ? blocks[i].t : 'p'; },

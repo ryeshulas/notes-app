@@ -66,6 +66,10 @@ automatically and it works offline the same way. On top of that it adds:
 - **Quick Settings tile** "New note": pull down the shade, tap the pencil, then add the tile.
 - **Share into Notes**: share text, links or pictures from any app to make a new note.
 - Export saves to **Downloads**; Print / PDF uses Android's print screen (choose *Save as PDF*).
+- **Reminders** as phone notifications (works when the app is closed; allow notifications when asked).
+- **Text in pictures** and **handwriting** are read on the device so search finds them on every device.
+- **Scan a document** with Google's document scanner; **share a PDF** to Notes to write on it.
+- **Voice memos** (allow the microphone when asked).
 - The app checks GitHub for a newer APK twice a day and offers to download it.
 
 ### One-time setup: the signing key

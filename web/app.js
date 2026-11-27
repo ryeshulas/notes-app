@@ -264,6 +264,7 @@ async function sync() {
       state.pending = (await idb.all('outbox')).length;
       renderSyncStatus();
       scheduleInkIndex();
+      if (android?.ocr) setTimeout(runPictureIndex, 12000);
     }
   };
   if (navigator.locks) await navigator.locks.request('notes-sync', run); else await run();
@@ -350,11 +351,20 @@ function renderSidebar() {
     { id: 'all', name: 'All notes', n: live.length },
     { id: 'inbox', name: 'Unfiled', n: count((n) => !n.data.folder || !state.records.get(keyOf('folder', n.data.folder)) || state.records.get(keyOf('folder', n.data.folder)).deleted) },
     ...folders().map((f) => ({ id: f.id, name: f.data.name, n: count((n) => n.data.folder === f.id), folder: true })),
+    { id: 'reminders', name: '⏰ Reminders', n: count((n) => !!n.data.remind?.at) },
+    ...allTags().map(([t, c]) => ({ id: `tag:${t}`, name: `#${t}`, n: c, tag: true })),
     { id: 'trash', name: 'Trash', n: notes().filter((n) => n.deleted && !n.data.purged).length },
   ];
   for (const it of items) {
+    if (it.tag && !nav.querySelector('.tags-head')) {
+      const h = document.createElement('div');
+      h.className = 'tags-head';
+      h.textContent = 'Tags';
+      nav.append(h);
+    }
+    if (it.id === 'reminders' && !it.n && state.view !== 'reminders') continue;
     const b = document.createElement('button');
-    b.className = 'folder' + (state.view === it.id ? ' active' : '');
+    b.className = 'folder' + (it.tag ? ' tag-item' : '') + (state.view === it.id ? ' active' : '');
     const name = document.createElement('span');
     name.className = 'folder-name';
     if (it.folder) name.append(folderIcon(it.id));
@@ -479,6 +489,8 @@ function viewTitle() {
   if (state.view === 'all') return 'All notes';
   if (state.view === 'inbox') return 'Unfiled';
   if (state.view === 'trash') return 'Trash';
+  if (state.view === 'reminders') return 'Reminders';
+  if (state.view.startsWith('tag:')) return `#${state.view.slice(4)}`;
   return state.records.get(keyOf('folder', state.view))?.data.name || '';
 }
 
@@ -501,6 +513,13 @@ function buildMatcher(query) {
   return (text) => regexes.every((r) => r.test(text));
 }
 
+// Everything search looks at: title, typed text, handwriting and text in pictures.
+function searchText(n) {
+  const pics = [...(n.data.ink?.items || []).filter((it) => it.k === 'img').map((it) => it.file),
+    ...(n.data.blocks || []).filter((b) => b.t === 'img').map((b) => b.file)];
+  return `${n.data.title || ''}\n${n.data.text || ''}\n${inkText(n.id)}\n${pics.map(imgText).join('\n')}`;
+}
+function imgText(fileId) { const r = state.records.get(keyOf('imgtext', fileId)); return r && !r.deleted ? r.data.text || '' : ''; }
 function visibleNotes() {
   const folderIds = new Set(folders().map((f) => f.id));
   const match = buildMatcher(state.query.trim());
@@ -509,11 +528,14 @@ function visibleNotes() {
     else {
       if (n.deleted) return false;
       if (state.view === 'inbox' && n.data.folder && folderIds.has(n.data.folder)) return false;
-      if (state.view !== 'all' && state.view !== 'inbox' && n.data.folder !== state.view) return false;
+      if (state.view === 'reminders') { if (!n.data.remind?.at) return false; }
+      else if (state.view.startsWith('tag:')) { if (!tagsOf(n).has(state.view.slice(4))) return false; }
+      else if (state.view !== 'all' && state.view !== 'inbox' && n.data.folder !== state.view) return false;
     }
-    if (match && !match(`${n.data.title || ''}\n${n.data.text || ''}\n${inkText(n.id)}`)) return false;
+    if (match && !match(searchText(n))) return false;
     return true;
-  }).sort((a, b) => (Number(!!b.data.pinned) - Number(!!a.data.pinned)) || compareNotes(a, b));
+  }).sort((a, b) => state.view === 'reminders' ? a.data.remind.at - b.data.remind.at
+    : (Number(!!b.data.pinned) - Number(!!a.data.pinned)) || compareNotes(a, b));
 }
 const titleOf = (n) => (n.data.title || (n.data.text || '').split('\n').find((l) => l.trim()) || '').trim().toLowerCase();
 function compareNotes(a, b) {
@@ -532,7 +554,7 @@ function noteDate(t) {
 }
 
 function renderList() {
-  if (android) pushRecentSoon();
+  if (android) { pushRecentSoon(); pushRemindersSoon(); }
   if (isPopout) return;
   $('#list-title').textContent = viewTitle();
   const grid = $('#notes');
@@ -570,6 +592,12 @@ function renderList() {
       chip = document.createElement('span');
       chip.className = 'folder-chip';
       chip.append(folderIcon(n.data.folder), nf.data.name);
+    }
+    if (n.data.remind?.at) {
+      const r = document.createElement('span');
+      r.className = 'card-remind' + (n.data.remind.at < Date.now() ? ' overdue' : '');
+      r.textContent = `⏰ ${fmtWhen(n.data.remind.at)}`;
+      m.append(' · ', r);
     }
     const todos = (n.data.blocks || []).filter((b) => b.t === 'todo');
     if (todos.length) m.textContent += ` · ${todos.filter((b) => b.d).length}/${todos.length} done`;
@@ -1262,7 +1290,9 @@ const canvasItems = CanvasItems.create($('#ink-items'), {
   },
   fileURL: (id) => files.url(id),
   barHost: $('#item-bar'),
-  barExtras: () => [['⧉ Copy', 'Copy (Ctrl+C)', () => copyDrawing(false)], ['✂ Cut', 'Cut (Ctrl+X)', () => copyDrawing(true)]],
+  barExtras: (it) => [
+    ...(it.k === 'img' ? [['Aa Text', 'Show the text in this picture', () => showPictureText(it.file)]] : []),
+    ['⧉ Copy', 'Copy (Ctrl+C)', () => copyDrawing(false)], ['✂ Cut', 'Cut (Ctrl+X)', () => copyDrawing(true)]],
 });
 
 function setTool(name) { document.querySelector(`.ink-tools [data-tool="${name}"]`)?.click(); }
@@ -1273,6 +1303,7 @@ function pickImages(anchor, multiple, onFiles) {
   const menu = $('#pick-menu');
   const touch = matchMedia('(pointer: coarse)').matches;
   menu.querySelector('[data-src="camera"]').classList.toggle('hidden', !touch);
+  menu.querySelector('[data-src="pdf"]').classList.toggle('hidden', anchor.id !== 'add-image');
   const r = anchor.getBoundingClientRect();
   menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - 200))}px`;
   menu.style.top = `${Math.min(r.bottom + 6, innerHeight - 170)}px`;
@@ -1281,6 +1312,8 @@ function pickImages(anchor, multiple, onFiles) {
     const src = e.target.closest('[data-src]')?.dataset.src;
     if (!src) return;
     menu.classList.add('hidden');
+    if (src === 'scan') { scanDocument(); return; }
+    if (src === 'pdf') { pickPdf(); return; }
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = multiple && src !== 'camera';
@@ -1564,7 +1597,7 @@ $('#page').addEventListener('contextmenu', (e) => {
   const pt = ink.point(e);
   const b = ink.selBox;
   const inSel = state.mode === 'write' && ink.sel.length && b && pt[0] >= b[0] && pt[0] <= b[2] && pt[1] >= b[1] && pt[1] <= b[3];
-  const item = !inSel && itemAt(e.clientX, e.clientY);
+  const item = !inSel && itemAt(e.clientX, e.clientY, true);
   const clip = inkClip.get();
   let entries = [];
   if (inSel) {
@@ -1581,6 +1614,8 @@ $('#page').addEventListener('contextmenu', (e) => {
       ['⧉ Duplicate', () => { pick(); if (copyDrawing(false)) pasteDrawing(null); }],
       ['🗑 Delete', () => { ink.pushUndo(true); canvasItems.remove(id); }, 'danger'],
     ];
+    if (item.classList.contains('item-img')) entries.unshift(['Aa Text in picture', () => showPictureText(canvasItems.items().find((x) => x.id === id)?.file)]);
+    if (item.classList.contains('locked')) entries.unshift(['🔓 Unlock (allow moving)', () => { pick(); [...$('#item-bar').querySelectorAll('button')].find((b) => b.textContent.includes('Unlock'))?.click(); }]);
   } else if (clip && (state.mode === 'write' || !e.target.closest('#note-body .txt'))) {
     entries = [['📋 Paste here', () => pasteDrawing([pt[0], pt[1]])]];
   }
@@ -1672,8 +1707,8 @@ function setMode(m) {
 $('#mode-type').addEventListener('click', () => { setMode('type'); body.focusEnd(); });
 $('#mode-write').addEventListener('click', () => setMode('write'));
 // Picture, shape or label under a screen point (they ignore taps while typing, so check by position).
-function itemAt(x, y) {
-  const els = [...document.querySelectorAll('#ink-items .item')].reverse();
+function itemAt(x, y, includeLocked = false) {
+  const els = [...document.querySelectorAll(includeLocked ? '#ink-items .item' : '#ink-items .item:not(.locked)')].reverse();
   return els.find((el) => { const r = el.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; }) || null;
 }
 // Hand a press over to a picture/shape/label so it can be moved.
@@ -1812,7 +1847,509 @@ const body = BodyEditor.create($('#note-body'), {
   },
   onSelectionStyle: (st) => showFormatState(st),
   fileURL: (id) => files.url(id),
+  onTag: (tag) => showTag(tag),
+  onNoteLink: (title) => openLinkedNote(title),
+  onLinkQuery: (q, rect) => showLinkSuggestions(q, rect),
+  checkedToBottom: () => localStorage.getItem('checkedToBottom') !== '0',
 });
+
+// ---- #tags ----
+// A tag is #word ending at a space or punctuation (so "#arm_freq=1" or "#https:" aren't tags). A line that
+// starts with "#" counts only if the whole line is tags, so commented-out settings and code aren't picked up.
+const TAG_RE = /(^|[^\w&#/])#([A-Za-z][\w-]{1,39})(?=$|[\s.,;!?)])/g;
+const tagCache = new WeakMap();
+function tagsOf(n) {
+  const hit = tagCache.get(n.data);
+  if (hit) return hit;
+  const out = new Set();
+  for (const line of `${n.data.title || ''}\n${n.data.text || ''}`.split('\n')) {
+    const t = line.trim();
+    if (t.startsWith('#') && !/^(#[A-Za-z][\w-]{1,39}[\s,]*)+$/.test(t)) continue;
+    for (const m of line.matchAll(TAG_RE)) out.add(m[2].toLowerCase());
+  }
+  tagCache.set(n.data, out);
+  return out;
+}
+function allTags() {
+  const counts = new Map();
+  for (const n of notes()) if (!n.deleted) for (const t of tagsOf(n)) counts.set(t, (counts.get(t) || 0) + 1);
+  return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+function showTag(tag) {
+  closeEditor();
+  state.view = `tag:${tag}`;
+  state.picked.clear();
+  renderSidebar(); renderList();
+}
+
+// ---- [[links to other notes]] ----
+const plainTitle = (n) => (n.data.title || (n.data.text || '').split('\n').find((l) => l.trim()) || '').trim().replace(/^([•◦▪☐☑]|\d+[.)])\s+/, '');
+function findNoteByTitle(title) {
+  const t = title.trim().toLowerCase();
+  return notes().filter((n) => !n.deleted && plainTitle(n).toLowerCase() === t).sort((a, b) => b.updated_at - a.updated_at)[0] || null;
+}
+function openLinkedNote(title) {
+  const n = findNoteByTitle(title);
+  if (n) { openNote(n.id); return; }
+  if (confirm(`There's no note called "${title}". Create it?`)) {
+    newNote('text');
+    $('#note-title').value = title;
+    editor.queueSave(0);
+  }
+}
+let linkQuery = null, linkSel = 0;
+function showLinkSuggestions(q, rect) {
+  const pop = $('#link-pop');
+  if (q === null) { pop.classList.add('hidden'); linkQuery = null; return; }
+  const ql = q.toLowerCase();
+  const list = notes().filter((n) => !n.deleted && n.id !== state.openId && plainTitle(n))
+    .map((n) => plainTitle(n)).filter((t, i, a) => a.indexOf(t) === i)
+    .filter((t) => !ql || t.toLowerCase().includes(ql))
+    .sort((a, b) => (a.toLowerCase().startsWith(ql) ? 0 : 1) - (b.toLowerCase().startsWith(ql) ? 0 : 1) || a.localeCompare(b))
+    .slice(0, 8);
+  if (q.trim() && !list.some((t) => t.toLowerCase() === ql)) list.push(`＋ New note: ${q.trim()}`);
+  if (!list.length) { pop.classList.add('hidden'); linkQuery = null; return; }
+  linkQuery = q;
+  linkSel = 0;
+  pop.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'menu-title';
+  head.textContent = 'Link to a note';
+  pop.append(head);
+  list.forEach((t, k) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    b.dataset.title = t.replace(/^＋ New note: /, '');
+    b.className = k === 0 ? 'on' : '';
+    b.addEventListener('pointerdown', (e) => e.preventDefault());
+    b.addEventListener('click', () => pickLink(b.dataset.title));
+    pop.append(b);
+  });
+  pop.classList.remove('hidden');
+  const pr = pop.getBoundingClientRect();
+  pop.style.left = `${Math.max(6, Math.min(rect.left, innerWidth - pr.width - 6))}px`;
+  pop.style.top = `${rect.bottom + 6 + pr.height > innerHeight ? rect.top - pr.height - 6 : rect.bottom + 6}px`;
+}
+function pickLink(title) {
+  const q = linkQuery;
+  $('#link-pop').classList.add('hidden');
+  linkQuery = null;
+  if (q === null) return;
+  body.completeLink(title, q.length);
+}
+$('#note-body').addEventListener('keydown', (e) => {
+  if (linkQuery === null) return;
+  const btns = [...$('#link-pop').querySelectorAll('button')];
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); e.stopPropagation();
+    linkSel = (linkSel + (e.key === 'ArrowDown' ? 1 : -1) + btns.length) % btns.length;
+    btns.forEach((b, k) => b.classList.toggle('on', k === linkSel));
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault(); e.stopPropagation();
+    pickLink(btns[linkSel].dataset.title);
+  } else if (e.key === 'Escape') {
+    e.preventDefault(); e.stopPropagation();
+    $('#link-pop').classList.add('hidden'); linkQuery = null;
+  }
+}, true);
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#link-pop')) { $('#link-pop').classList.add('hidden'); linkQuery = null; } });
+// Notes that link to the open note.
+function renderBacklinks() {
+  const box = $('#backlinks');
+  const n = state.openId && getNote(state.openId);
+  const title = n && plainTitle(n);
+  box.textContent = '';
+  if (!title) { box.classList.add('hidden'); return; }
+  const needle = `[[${title.toLowerCase()}]]`;
+  const from = notes().filter((x) => !x.deleted && x.id !== n.id && (x.data.text || '').toLowerCase().includes(needle));
+  if (!from.length) { box.classList.add('hidden'); return; }
+  box.append('Linked from: ');
+  from.slice(0, 20).forEach((x, k) => {
+    if (k) box.append(', ');
+    const a = document.createElement('a');
+    a.href = '#';
+    a.textContent = plainTitle(x) || 'Untitled';
+    a.addEventListener('click', (e) => { e.preventDefault(); openNote(x.id); });
+    box.append(a);
+  });
+  box.classList.remove('hidden');
+}
+
+// ---- reminders ----
+// A note can have one reminder: data.remind = { at: time }. The Android app shows a phone notification
+// at that time (even when closed); in a browser the reminder pops up while the app is open.
+function fmtWhen(at) {
+  const d = new Date(at), now = new Date();
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const diff = Math.round((day - today) / 86400000);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (diff === 0) return `Today ${time}`;
+  if (diff === 1) return `Tomorrow ${time}`;
+  if (diff === -1) return `Yesterday ${time}`;
+  if (diff > 1 && diff < 7) return `${d.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })} ${time}`;
+}
+const toLocalInput = (t) => { const d = new Date(t - new Date(t).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+function quickTime(q) {
+  const d = new Date();
+  if (q === 'hour') return Date.now() + 3600000;
+  if (q === 'evening') { d.setHours(18, 0, 0, 0); if (d < new Date()) d.setDate(d.getDate() + 1); return +d; }
+  if (q === 'tomorrow') { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return +d; }
+  if (q === 'weekend') { const add = (6 - d.getDay() + 7) % 7 || 7; d.setDate(d.getDate() + add); d.setHours(9, 0, 0, 0); return +d; }
+  d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0); return +d;    // next Monday
+}
+function openReminder() {
+  const n = getNote(state.openId);
+  if (!n) return;
+  $('#note-menu').classList.add('hidden');
+  const at = n.data.remind?.at;
+  $('#remind-at').value = toLocalInput(at || quickTime('tomorrow'));
+  $('#remind-clear').classList.toggle('hidden', !at);
+  $('#remind-pop').classList.remove('hidden');
+}
+async function setReminder(at) {
+  const n = getNote(state.openId);
+  if (!n) return;
+  n.data = { ...n.data, remind: at ? { at } : undefined };
+  if (!at) delete n.data.remind;
+  $('#remind-pop').classList.add('hidden');
+  showRemindChip(n.data.remind);
+  editor.queueSave(0);
+  if (at) {
+    toast(`⏰ ${fmtWhen(at)}`);
+    if (!android && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { /* ignore */ } }
+  }
+}
+function showRemindChip(r) {
+  let chip = $('#remind-chip');
+  if (!chip) {
+    chip = document.createElement('button');
+    chip.id = 'remind-chip';
+    chip.className = 'remind-chip';
+    chip.title = 'Change or remove the reminder';
+    chip.addEventListener('click', openReminder);
+    $('#note-colors').append(chip);
+  }
+  chip.classList.toggle('hidden', !r?.at);
+  if (r?.at) { chip.textContent = `⏰ ${fmtWhen(r.at)}`; chip.classList.toggle('overdue', r.at < Date.now()); }
+}
+$('#remind-note').addEventListener('click', openReminder);
+document.querySelectorAll('#remind-pop [data-q]').forEach((b) => b.addEventListener('click', () => { $('#remind-at').value = toLocalInput(quickTime(b.dataset.q)); }));
+$('#remind-save').addEventListener('click', () => {
+  const t = new Date($('#remind-at').value).getTime();
+  if (!Number.isFinite(t)) { toast('Pick a date and time'); return; }
+  setReminder(t);
+});
+$('#remind-clear').addEventListener('click', () => setReminder(null));
+$('#remind-cancel').addEventListener('click', () => $('#remind-pop').classList.add('hidden'));
+
+// Due reminders while the app is open (the Android app uses phone notifications instead).
+function checkReminders() {
+  if (!state.token) return;
+  const now = Date.now();
+  for (const n of notes()) {
+    const at = n.data.remind?.at;
+    if (n.deleted || !at || at > now || at < now - 86400000) continue;
+    const key = `fired:${n.id}:${at}`;
+    if (localStorage.getItem(key)) continue;
+    localStorage.setItem(key, '1');
+    if (android) continue;
+    const title = plainTitle(n) || 'Note';
+    if ('Notification' in window && Notification.permission === 'granted') {
+      navigator.serviceWorker?.ready.then((reg) => reg.showNotification(`⏰ ${title}`, { body: 'Reminder', tag: n.id, data: { id: n.id } }))
+        .catch(() => { try { new Notification(`⏰ ${title}`, { body: 'Reminder' }); } catch { /* ignore */ } });
+    }
+    const banner = $('#remind-banner');
+    banner.textContent = '';
+    const msg = document.createElement('span');
+    msg.textContent = `⏰ ${title}`;
+    const open = document.createElement('button');
+    open.textContent = 'Open';
+    open.addEventListener('click', () => { banner.classList.add('hidden'); openNote(n.id); });
+    const done = document.createElement('button');
+    done.textContent = 'Done';
+    done.addEventListener('click', async () => {
+      banner.classList.add('hidden');
+      const cur = getNote(n.id);
+      const data = { ...cur.data }; delete data.remind;
+      await save('note', n.id, data, cur.deleted);
+      renderSidebar(); renderList();
+    });
+    banner.append(msg, open, done);
+    banner.classList.remove('hidden');
+  }
+}
+setInterval(checkReminders, 20000);
+setTimeout(checkReminders, 3000);
+navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.type === 'open-note' && getNote(e.data.id)) openNote(e.data.id); });
+// Hand the upcoming reminders to the Android app so it can notify even when closed.
+var remindTimer = null;   // var: renderList can run before this line
+function pushRemindersSoon() {
+  if (!android?.setReminders) return;
+  clearTimeout(remindTimer);
+  remindTimer = setTimeout(() => {
+    const now = Date.now();
+    const list = notes().filter((n) => !n.deleted && n.data.remind?.at > now)
+      .map((n) => ({ id: n.id, title: plainTitle(n) || 'Note', at: n.data.remind.at }));
+    try { android.setReminders(JSON.stringify(list)); } catch { /* ignore */ }
+  }, 1000);
+}
+
+// ---- templates ----
+const B = (s) => ({ t: 'p', s, r: [{ s, b: 1 }] });     // bold heading line
+const L = (t, s = '') => ({ t, s });
+function plannerHours() {
+  const rows = [];
+  for (let h = 7; h <= 20; h++) rows.push([`${h % 12 || 12}:00 ${h < 12 ? 'AM' : 'PM'}`, '']);
+  return rows;
+}
+const today = () => new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const TEMPLATES = [
+  { id: 'meeting', label: '👥 Meeting notes', make: () => ({ title: `Meeting – ${today()}`, blocks: [
+    B('Attendees'), L('ul'), B('Agenda'), L('ol'), B('Notes'), L('p'), B('Action items'), L('todo')] }) },
+  { id: 'maintenance', label: '🔧 Maintenance log', make: () => ({ title: 'Maintenance log', blocks: [
+    B('Item / location'), L('p'),
+    { t: 'table', kind: 'log', cols: ['Date', 'Work done', 'Parts / cost', 'Next due'], rows: [['', '', '', '']] }, L('p')] }) },
+  { id: 'ruled', label: '📝 Ruled page (medium)', make: () => ({ title: '', blocks: [L('p')], bg: 'ruled' }) },
+  { id: 'planner', label: '📅 Daily planner', make: () => ({ title: `Planner – ${today()}`, blocks: [
+    B('Top priorities'), L('todo'), L('todo'), L('todo'),
+    B('Schedule'), { t: 'table', kind: 'planner', cols: ['Time', 'Plan'], rows: plannerHours() },
+    B('To do'), L('todo'), B('Notes'), L('p')] }) },
+  { id: 'tracker', label: '⏱ Activity tracker', make: () => ({ title: 'Activity tracker', blocks: [
+    { t: 'table', kind: 'tracker', cols: ['Date', 'Time', 'Note'], rows: [['', '', '']] }, L('p')] }) },
+];
+function newFromTemplate(id) {
+  const t = TEMPLATES.find((x) => x.id === id);
+  if (!t) return;
+  const { title, blocks, bg } = t.make();
+  newNote('text');
+  const n = getNote(state.openId);
+  n.data = { ...n.data, bg: bg || undefined };
+  if (!bg) delete n.data.bg;
+  $('#note-title').value = title;
+  body.load(blocks.map((b) => ({ s: '', ...b })));
+  applyPaper(n.data.bg);
+  editor.queueSave(0);
+}
+$('#templates-btn').addEventListener('click', (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  showMenu(r.left, r.bottom + 4, TEMPLATES.map((t) => [t.label, () => newFromTemplate(t.id)]));
+});
+// Paper: dotted (default) or ruled lines that match the typed lines.
+function applyPaper(bg) {
+  $('#page').classList.toggle('bg-ruled', bg === 'ruled');
+  $('#paper-ruled').textContent = bg === 'ruled' ? '📄 Dotted paper' : '📄 Ruled lines';
+}
+$('#paper-ruled').addEventListener('click', () => {
+  $('#note-menu').classList.add('hidden');
+  const n = getNote(state.openId);
+  if (!n) return;
+  const bg = n.data.bg === 'ruled' ? undefined : 'ruled';
+  n.data = { ...n.data, bg };
+  if (!bg) delete n.data.bg;
+  applyPaper(bg);
+  editor.queueSave(0);
+});
+
+// ---- text in pictures (read on the Android device with ML Kit; synced so every device can search it) ----
+async function fileBase64(id) {
+  const url = await files.url(id);
+  if (!url) return null;
+  const blob = await (await fetch(url)).blob();
+  return { b64: await blobToBase64(blob), type: blob.type || 'image/jpeg' };
+}
+function androidCall(method, ...args) {
+  return new Promise((resolve) => {
+    const id = `${method}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const t = setTimeout(() => { androidHandlers.delete(id); resolve({ error: 'timed out' }); }, 180000);
+    androidHandlers.set(id, (r) => { if (r.status) return; clearTimeout(t); androidHandlers.delete(id); resolve(r); });
+    android[method](...args, id);
+  });
+}
+async function readPictureText(fileId) {
+  if (!android?.ocr) return null;
+  const f = await fileBase64(fileId);
+  if (!f) return null;
+  const res = await androidCall('ocr', f.b64);
+  if (res.error) return null;
+  await save('imgtext', fileId, { text: res.text || '' });
+  return res.text || '';
+}
+async function showPictureText(fileId) {
+  const pop = $('#pictext-pop');
+  pop.dataset.file = fileId;
+  $('#pictext-text').value = imgText(fileId);
+  const have = !!state.records.get(keyOf('imgtext', fileId));
+  $('#pictext-status').textContent = have ? (imgText(fileId) ? '' : 'No text found in this picture.') : android?.ocr ? 'Reading the picture…' : 'Text in pictures is read by the Android app. Open this note there once, then it shows here too.';
+  pop.classList.remove('hidden');
+  if (!have && android?.ocr) {
+    const text = await readPictureText(fileId);
+    if (pop.dataset.file !== fileId) return;
+    $('#pictext-text').value = text || '';
+    $('#pictext-status').textContent = text ? '' : text === null ? 'Couldn\'t read this picture.' : 'No text found in this picture.';
+  }
+}
+$('#pictext-copy').addEventListener('click', async () => { if (await writeClipboard($('#pictext-text').value)) toast('Copied'); });
+$('#pictext-add').addEventListener('click', () => {
+  const t = $('#pictext-text').value.trim();
+  $('#pictext-pop').classList.add('hidden');
+  if (!t) return;
+  setMode('type');
+  body.appendText(t);
+  editor.queueSave(0);
+});
+$('#pictext-close').addEventListener('click', () => $('#pictext-pop').classList.add('hidden'));
+// Background reading of pictures that haven't been read yet (Android app only).
+function picturesNeedingText() {
+  const ids = [];
+  for (const n of notes()) {
+    if (n.deleted) continue;
+    for (const it of n.data.ink?.items || []) if (it.k === 'img' && it.file && !state.records.get(keyOf('imgtext', it.file))) ids.push(it.file);
+    for (const b of n.data.blocks || []) if (b.t === 'img' && b.file && !state.records.get(keyOf('imgtext', b.file))) ids.push(b.file);
+  }
+  return [...new Set(ids)];
+}
+const picIndex = { running: false, failedUntil: 0 };
+async function runPictureIndex() {
+  if (!android?.ocr || picIndex.running || !state.token || Date.now() < picIndex.failedUntil) return;
+  picIndex.running = true;
+  try {
+    for (const id of picturesNeedingText()) {
+      const text = await readPictureText(id);
+      if (text === null) { picIndex.failedUntil = Date.now() + 10 * 60 * 1000; break; }
+    }
+  } finally { picIndex.running = false; }
+}
+
+// ---- document scanning (Android app: Google's document scanner finds the edges and cleans up the page) ----
+async function addPagePictures(blobs, lock = true) {
+  if (!state.openId || !blobs.length) return;
+  setMode('write');
+  // Start below everything that's already on the page.
+  const s = ink.scale();
+  const textBottom = ($('#note-body').offsetHeight) / s;
+  const lowest = Math.max(textBottom, canvasItems.lowestPoint(), ...ink.strokes.map((st) => { let m = 0; for (let i = 1; i < st.p.length; i += 3) m = Math.max(m, st.p[i]); return m; }));
+  let y = Math.ceil(lowest + 20);
+  for (const blob of blobs) {
+    const id = uuid();
+    const { blob: b, w, h } = await prepareImage(blob);
+    await files.put(id, b);
+    const height = Math.round(1000 * (h / w));
+    canvasItems.addImage(id, 1000, height, 0, y, lock);
+    y += height + 24;
+  }
+  ink.growIfNeeded(y);
+  ink.resize();
+  setTool('pen');
+  editor.queueSave(0);
+  scheduleInkIndex(15000);
+}
+let scanPages = [];
+async function scanDocument() {
+  if (!android?.scanDocument || !state.openId) return;
+  scanPages = [];
+  const res = await androidCall('scanDocument');
+  if (res.error) { if (res.error !== 'cancelled') toast(`Couldn't scan: ${res.error}`); return; }
+  await addPagePictures(scanPages.map((p) => base64ToFile(p.data, 'scan.jpg', p.type || 'image/jpeg')), false);
+  scanPages = [];
+  toast(`Added ${res.pages || 0} scanned page${res.pages === 1 ? '' : 's'}`);
+  setTimeout(runPictureIndex, 1500);
+}
+// Scanned pages arrive one at a time before the final answer.
+window.androidScanPage = (type, data) => { scanPages.push({ type, data }); };
+
+// ---- PDF: each page becomes a locked picture on the page that you can write on ----
+function pickPdf() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf,.pdf';
+  input.onchange = () => { if (input.files[0]) importPdf(input.files[0]); };
+  input.click();
+}
+async function importPdf(file) {
+  if (!state.openId) return;
+  const busy = $('#busy');
+  busy.textContent = 'Opening PDF…';
+  busy.classList.remove('hidden');
+  try {
+    const pdfjs = await import('/vendor/pdfjs/pdf.min.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    const count = Math.min(doc.numPages, 60);
+    const blobs = [];
+    for (let p = 1; p <= count; p++) {
+      busy.textContent = `Reading PDF page ${p} of ${count}…`;
+      const page = await doc.getPage(p);
+      const base = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({ scale: 1600 / base.width });
+      const c = document.createElement('canvas');
+      c.width = Math.round(viewport.width); c.height = Math.round(viewport.height);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      blobs.push(await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.85)));
+    }
+    busy.textContent = 'Adding pages…';
+    await addPagePictures(blobs, true);
+    toast(doc.numPages > count ? `Added the first ${count} of ${doc.numPages} pages` : `Added ${count} page${count === 1 ? '' : 's'} – write on them in Write mode`);
+    setTimeout(runPictureIndex, 1500);
+  } catch (err) {
+    alert(`Couldn't open that PDF: ${err.message || err}`);
+  } finally {
+    busy.classList.add('hidden');
+  }
+}
+
+// ---- voice memos ----
+const rec = { mr: null, chunks: [], start: 0, timer: null, cancelled: false, stream: null };
+function recMime() {
+  for (const t of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']) if (window.MediaRecorder?.isTypeSupported?.(t)) return t;
+  return '';
+}
+async function startRecording() {
+  if (rec.mr || !state.openId) return;
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { alert('Voice recording isn\'t supported here.'); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (err) { alert(`Couldn't use the microphone: ${err.message || err.name}`); return; }
+  const mime = recMime();
+  const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  Object.assign(rec, { mr, stream, chunks: [], start: Date.now(), cancelled: false });
+  mr.ondataavailable = (e) => { if (e.data.size) rec.chunks.push(e.data); };
+  mr.onstop = async () => {
+    clearInterval(rec.timer);
+    rec.stream.getTracks().forEach((t) => t.stop());
+    $('#rec-bar').classList.add('hidden');
+    const dur = (Date.now() - rec.start) / 1000;
+    const chunks = rec.chunks, cancelled = rec.cancelled;
+    rec.mr = null; rec.chunks = [];
+    if (cancelled || !chunks.length) return;
+    const type = (mr.mimeType || 'audio/webm').split(';')[0];
+    const blob = new Blob(chunks, { type });
+    const id = uuid();
+    await files.put(id, blob);
+    setMode('type');
+    body.insertObject({ t: 'audio', file: id, dur });
+    editor.queueSave(0);
+  };
+  mr.start(1000);
+  $('#rec-time').textContent = '0:00';
+  $('#rec-bar').classList.remove('hidden');
+  rec.timer = setInterval(() => {
+    const s = Math.round((Date.now() - rec.start) / 1000);
+    $('#rec-time').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    if (s >= 30 * 60) rec.mr?.stop();      // 30-minute limit
+  }, 500);
+}
+$('#voice-btn').addEventListener('pointerdown', (e) => e.preventDefault());
+$('#voice-btn').addEventListener('click', startRecording);
+$('#rec-stop').addEventListener('click', () => rec.mr?.stop());
+$('#rec-cancel').addEventListener('click', () => { rec.cancelled = true; rec.mr?.stop(); });
+
+// Setting: move checked items to the bottom of their checklist.
+$('#checked-bottom').checked = localStorage.getItem('checkedToBottom') !== '0';
+$('#checked-bottom').addEventListener('change', (e) => localStorage.setItem('checkedToBottom', e.target.checked ? '1' : '0'));
 
 // Pictures in the text
 async function addTextImage([file]) {
@@ -1892,6 +2429,9 @@ const editor = {
     $('#editor').style.setProperty('--c', noteColor(d.color));
     document.querySelectorAll('#note-colors .swatch').forEach((s) => s.classList.toggle('active', s.dataset.color === (d.color || 'yellow')));
     ink.load(d.ink);
+    showRemindChip(d.remind);
+    applyPaper(d.bg);
+    renderBacklinks();
     setMode(!(d.text || '').trim() && ((d.ink?.strokes?.length || 0) + (d.ink?.items?.length || 0)) ? 'write' : 'type');
     if (!d.page) migrateToPage(id);
     if (isPopout) document.title = d.title || 'Note';
@@ -2342,6 +2882,7 @@ async function init() {
 
   if (isPopout && params.get('note')) openNote(params.get('note'), { pushHistory: false });
   else if (params.has('new')) { history.replaceState(null, '', '/'); newNote(params.get('new')); }
+  else if (params.has('open') && getNote(params.get('open'))) { history.replaceState(null, '', '/'); openNote(params.get('open')); }
 
   if (android) window.androidOpen();
   sync().then(() => pruneLocalFiles()).catch(() => {});
@@ -2433,6 +2974,7 @@ async function openShared() {
   if (s.title) { $('#note-title').value = s.title.slice(0, 200); }
   if (s.text) body.appendText(s.text);
   editor.queueSave(0);
+  if (s.pdf) { await importPdf(base64ToFile(s.pdf, s.pdfName || 'shared.pdf', 'application/pdf')); return; }
   if (s.images?.length) {
     setMode('write');
     await new Promise((r) => setTimeout(r, 100));
@@ -2444,6 +2986,10 @@ async function openShared() {
 window.androidBack = () => {
   const open = (sel) => { const el = $(sel); return el && !el.classList.contains('hidden'); };
   if (open('#convert-pop')) { closeConvert(); return true; }
+  if (open('#remind-pop')) { $('#remind-pop').classList.add('hidden'); return true; }
+  if (open('#pictext-pop')) { $('#pictext-pop').classList.add('hidden'); return true; }
+  if (open('#ctx-menu')) { $('#ctx-menu').classList.add('hidden'); return true; }
+  if (rec.mr) { rec.cancelled = true; rec.mr.stop(); return true; }
   if (open('#pick-menu')) { $('#pick-menu').classList.add('hidden'); return true; }
   if (open('#note-menu')) { $('#note-menu').classList.add('hidden'); return true; }
   if (open('#history')) { $('#history').classList.add('hidden'); return true; }

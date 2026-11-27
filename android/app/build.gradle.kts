@@ -54,4 +54,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("com.google.mlkit:digital-ink-recognition:18.1.0")
+    // Text in pictures and the document scanner come from Google Play services (small download, kept up to date)
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
 }

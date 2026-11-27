@@ -158,6 +158,7 @@ const CanvasItems = (() => {
     const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
 
     function place(el, it) {
+      el.classList.toggle('locked', !!it.lock);
       const s = scale();
       el.style.left = `${it.x * s}px`;
       el.style.top = `${it.y * s}px`;
@@ -345,6 +346,7 @@ const CanvasItems = (() => {
         btn('+', 'Bigger', () => setImageWidth(it, imagePct(it) + 10));
         btn('Full width', 'Fit the width of the page', () => { it.x = 0; setImageWidth(it, 100); });
       }
+      if (it.k === 'img') btn(it.lock ? '🔓 Unlock' : '🔒 Lock', it.lock ? 'Allow moving and resizing' : 'Keep it in place so you can write on it', () => { it.lock = it.lock ? undefined : 1; render(); changed(); });
       for (const [label, title, fn] of (barExtras ? barExtras(it) : [])) btn(label, title, fn);
       btn('🗑 Delete', 'Delete', () => remove(it.id), 'danger');
       bar.classList.remove('hidden');
@@ -397,6 +399,7 @@ const CanvasItems = (() => {
         const wasSelected = selected === it.id;
         selected = it.id;
         render();
+        if (it.lock) { renderBar(); return; }     // locked (PDF pages, scans): select only, no moving
         const s = scale();
         const resizing = e.target.classList.contains('resize-handle');
         const start = { x: e.clientX, y: e.clientY, ix: it.x, iy: it.y, iw: it.w, ih: it.h };
@@ -477,10 +480,11 @@ const CanvasItems = (() => {
         changed();
         return it;
       },
-      addImage(file, w, h, x, y) {
+      addImage(file, w, h, x, y, lock) {
         const it = { id: uid(), k: 'img', file, x, y, w, h };
+        if (lock) it.lock = 1;
         items.push(it);
-        selected = it.id;
+        selected = lock ? null : it.id;
         render();
         changed();
         return it;

@@ -15,7 +15,8 @@ const PASSWORD = process.env.NOTES_PASSWORD || '';
 const MAX_BODY = 25 * 1024 * 1024; // ink-heavy syncs can be large
 const PAGE_SIZE = 500;
 // inktext: text read from a note's handwriting (by the Android app), used for search
-const KINDS = new Set(['note', 'folder', 'inktext']);
+// imgtext: text read from a picture (by the Android app), used for search and "copy text"
+const KINDS = new Set(['note', 'folder', 'inktext', 'imgtext']);
 const APP_VERSION = (() => {
   try { return fs.readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf8').trim(); } catch { return 'dev'; }
 })();
@@ -33,6 +34,7 @@ fs.mkdirSync(FILES_DIR, { recursive: true });
 const MAX_FILE = 20 * 1024 * 1024;
 const FILE_ID = /^[A-Za-z0-9-]{8,64}$/;
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const AUDIO_TYPES = new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/aac', 'audio/wav', 'audio/x-m4a']);
 const db = new DatabaseSync(path.join(DATA_DIR, 'notes.db'));
 db.exec(`
   PRAGMA journal_mode = WAL;
@@ -304,7 +306,7 @@ function referencedFiles(records) {
   for (const r of records) {
     const d = typeof r.data === 'string' ? (() => { try { return JSON.parse(r.data); } catch { return {}; } })() : r.data;
     for (const it of d?.ink?.items || []) if (it.k === 'img' && it.file) ids.add(it.file);
-    for (const b of d?.blocks || []) if (b.t === 'img' && b.file) ids.add(b.file);
+    for (const b of d?.blocks || []) if ((b.t === 'img' || b.t === 'audio') && b.file) ids.add(b.file);
   }
   return ids;
 }
@@ -381,7 +383,7 @@ function readBody(req, limit) {
 
 async function handlePutFile(req, res, id) {
   const type = String(req.headers['content-type'] || '').split(';')[0].trim();
-  if (!IMAGE_TYPES.has(type)) return send(res, 415, { error: 'Only images are supported' });
+  if (!IMAGE_TYPES.has(type) && !AUDIO_TYPES.has(type)) return send(res, 415, { error: 'Only pictures and voice recordings are supported' });
   if (q.getFile.get(id)) { req.resume(); return send(res, 200, { ok: true, existed: true }); }
   const buf = await readBody(req, MAX_FILE);
   const tmp = path.join(FILES_DIR, `${id}.tmp`);
@@ -407,7 +409,7 @@ function handleGetFile(req, res, id) {
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json',
-  '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+  '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.mjs': 'text/javascript; charset=utf-8',
 };
 
 function serveStatic(req, res, pathname) {

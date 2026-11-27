@@ -106,6 +106,20 @@ class Bridge(private val act: MainActivity) {
         NotesWidget.refreshAll(act)
     }
 
+    /** Upcoming note reminders: JSON array of {id, title, at}. */
+    @JavascriptInterface fun setReminders(json: String) {
+        Reminders.schedule(act, json)
+        if (json.length > 2) act.askNotificationPermission()
+    }
+
+    /** Read the text in a picture (base64). Answers {text} or {error}. */
+    @JavascriptInterface fun ocr(base64: String, callbackId: String) {
+        PictureText.read(base64) { callback(callbackId, it) }
+    }
+
+    /** Open Google's document scanner. Pages arrive via window.androidScanPage, then {pages: n} or {error}. */
+    @JavascriptInterface fun scanDocument(callbackId: String) = act.startScan(callbackId)
+
     /** Clipboard access (the WebView can't read the clipboard on its own). */
     @JavascriptInterface fun readClipboard(): String {
         val cm = act.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

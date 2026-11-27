@@ -507,3 +507,84 @@ html.dark .note-body a.lnk { color: #8cb8ff; }
 html.dark .link-tip { background: #e9e6dc; color: #24231f !important; }
 .ink-index-status { font-size: 12px; color: var(--muted); padding: 2px 10px; }
 .ink-index-status:empty { display: none; }
+
+/* ---- 0.29: tags, note links, voice memos, tables, list drag handles ---- */
+.note-body a.tag { color: #8a5a00; background: rgba(245, 200, 76, .3); border-radius: 4px; padding: 0 2px; text-decoration: none; cursor: text; }
+html.dark .note-body a.tag { color: #ffd66b; background: rgba(245, 200, 76, .15); }
+.note-body a.nlink { color: #6b3fb3; text-decoration: underline dotted; text-underline-offset: 3px; cursor: text; }
+html.dark .note-body a.nlink { color: #c7a8ff; }
+.note-body .line { position: relative; }
+.note-body .grip { position: absolute; left: -1.25em; top: 0; width: 1.1em; text-align: center; color: var(--muted); opacity: 0;
+  cursor: grab; touch-action: none; user-select: none; font-size: .95em; line-height: 1.45; }
+.note-body .line:hover > .grip, .note-body .line:focus-within > .grip { opacity: .7; }
+@media (hover: none) { .note-body .grip { opacity: .35; } }
+.note-body .line.dragging { opacity: .4; }
+.note-body .drop-marker { position: absolute; left: 0; right: 0; height: 3px; background: #f5c84c; border-radius: 2px; pointer-events: none; z-index: 3; }
+.note-body { position: relative; }
+.body-audio { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; margin: 4px 0; border-radius: 10px; background: rgba(0,0,0,.05); }
+html.dark .body-audio { background: rgba(255,255,255,.07); }
+.body-audio audio { height: 36px; max-width: 100%; flex: 1 1 200px; }
+.audio-label { font-size: .85em; color: var(--muted); }
+.audio-del { background: none; border: 0; font-size: 1em; padding: 4px; }
+.body-table { margin: 6px 0; overflow-x: auto; }
+.body-table table { border-collapse: collapse; width: 100%; font-size: .95em; }
+.body-table th, .body-table td { border: 1px solid rgba(0,0,0,.18); padding: 4px 6px; text-align: left; vertical-align: top; min-width: 3em; }
+html.dark .body-table th, html.dark .body-table td { border-color: rgba(255,255,255,.2); }
+.body-table th { background: rgba(0,0,0,.05); font-weight: 700; }
+.body-table .cell { outline: none; }
+.body-table .cell:focus { background: rgba(245, 200, 76, .22); }
+.body-table td.row-del, .body-table th:last-child { border: 0; width: 1.6em; min-width: 0; padding: 0; background: none; }
+.row-del button { background: none; border: 0; color: var(--muted); opacity: .5; padding: 2px 4px; }
+.body-table tr:hover .row-del button { opacity: 1; }
+.table-tools { display: flex; gap: 8px; margin-top: 6px; }
+.table-tools button { font-size: .8em; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.6); color: inherit; }
+html.dark .table-tools button { background: rgba(255,255,255,.06); }
+
+/* locked pictures (PDF pages, scans): they stay put so you can write on them */
+.ink-items .item-img.locked img { border-radius: 0; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+.ink-items .item-img.locked .resize-handle { display: none; }
+
+.tags-head { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 12px 10px 4px; }
+.folder.tag-item .folder-name { color: #8a5a00; }
+html.dark .folder.tag-item .folder-name { color: #ffd66b; }
+.backlinks { margin: -24px auto 40px; font-size: 14px; color: var(--muted); max-width: 532px; padding: 0 8px; }
+.backlinks a { color: #6b3fb3; }
+html.dark .backlinks a { color: #c7a8ff; }
+.link-pop { max-height: 300px; overflow-y: auto; min-width: 220px; }
+.link-pop button.on { background: rgba(0,0,0,.08); }
+html.dark .link-pop button.on { background: rgba(255,255,255,.1); }
+.setting { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); padding: 4px 2px; }
+
+/* reminders */
+.remind-quick { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.remind-quick button { border: 1px solid var(--line); background: rgba(255,255,255,.7); border-radius: 16px; padding: 6px 12px; font-size: 14px; color: inherit; }
+html.dark .remind-quick button { background: rgba(255,255,255,.06); }
+.remind-when { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+.remind-when input { font: inherit; font-size: 16px; padding: 8px; border-radius: 8px; border: 1px solid var(--line); color: var(--text); background: rgba(255,255,255,.8); }
+html.dark .remind-when input { background: rgba(255,255,255,.08); color-scheme: dark; }
+.remind-chip { margin-left: auto; border: 1px solid #d99a00; background: #ffe9a8; color: #7a4f00; border-radius: 14px; padding: 3px 10px; font-size: 13px; font-weight: 600; }
+.remind-chip.overdue, .card-remind.overdue { color: #b3261e; }
+.remind-chip.overdue { border-color: #e0524b; background: #ffe0dc; }
+html.dark .remind-chip { background: #4a3b10; color: #ffd66b; border-color: #8a6a1a; }
+html.dark .remind-chip.overdue { background: #4a1f1c; color: #ff9c94; }
+.card-remind { font-weight: 600; }
+.remind-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 80; background: #2b2a26; color: #fff; border-radius: 14px;
+  padding: 10px 12px 10px 16px; display: flex; gap: 10px; align-items: center; box-shadow: 0 6px 24px rgba(0,0,0,.3); max-width: calc(100vw - 24px); }
+.remind-banner button { border: 0; border-radius: 10px; padding: 7px 12px; background: #f5c84c; color: #2b2a26; font-weight: 600; }
+.remind-banner button + button { background: rgba(255,255,255,.15); color: #fff; }
+
+/* ruled paper: one line under each line of typed text */
+.page.bg-ruled { background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.45em - 1px), rgba(60, 110, 190, .28) calc(1.45em - 1px), rgba(60, 110, 190, .28) 1.45em) !important;
+  background-size: 100% 1.45em !important; background-position: 0 .4em !important; }
+html.dark .page.bg-ruled { background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.45em - 1px), rgba(255,255,255,.14) calc(1.45em - 1px), rgba(255,255,255,.14) 1.45em) !important; }
+
+/* voice recording bar */
+.rec-bar { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 70; display: flex; align-items: center; gap: 10px;
+  background: #2b2a26; color: #fff; border-radius: 26px; padding: 8px 10px 8px 16px; box-shadow: 0 6px 24px rgba(0,0,0,.3); font-size: 16px; }
+.rec-bar button { border: 0; border-radius: 18px; padding: 8px 14px; font-weight: 600; background: rgba(255,255,255,.15); color: #fff; }
+.rec-bar .primary { background: #e0524b; }
+.rec-dot { width: 12px; height: 12px; border-radius: 50%; background: #e0524b; animation: recblink 1s infinite; }
+@keyframes recblink { 50% { opacity: .25; } }
+.busy-note { }
+.note-body .line.t-table > .body-table, .note-body .line.t-audio > .body-audio { flex: 1; min-width: 0; }
+.body-table tr > .cell:nth-last-child(2) { width: 100%; }

@@ -51,6 +51,7 @@
           <option value="light">☀️ Light</option>
           <option value="dark">🌙 Dark</option>
         </select>
+        <label class="setting"><input type="checkbox" id="checked-bottom"> Move checked items to the bottom</label>
         <button id="pin-menu" class="pin-menu" title="Keep the folder menu open">📌 Keep open</button>
         <span id="sync-status" class="sync" title="Sync status">●</span>
         <button id="logout" class="link">Sign out</button>
@@ -66,6 +67,7 @@
       <div class="list-head">
         <h2 id="list-title"></h2>
         <div class="list-opts">
+          <button id="templates-btn" class="sel-btn" title="New note from a template">📄 Templates</button>
           <button id="select-mode" class="sel-btn" title="Select several notes">☑ Select</button>
           <select id="sort-by" title="Sort notes">
             <option value="edited">Last edited</option>
@@ -106,6 +108,8 @@
         <button id="note-delete" class="icon-btn" title="Move to trash">🗑</button>
       </header>
       <div id="note-menu" class="pick-menu note-menu hidden" role="menu">
+        <button id="remind-note">⏰ Reminder…</button>
+        <button id="paper-ruled">📄 Ruled lines</button>
         <button id="open-history">🕘 Version history</button>
         <button id="pip-note" class="desktop-only">📌 Keep on top of other windows</button>
         <button id="print-note">🖨 Print / Save as PDF</button>
@@ -149,6 +153,7 @@
           <button id="line-outdent" class="tool" title="Move left (Shift+Tab)">⇤</button>
           <button id="line-indent" class="tool" title="Indent / make sub-item (Tab)">⇥</button>
           <button id="clear-done" class="tool" title="Remove checked items">Clear checked</button>
+          <button id="voice-btn" class="tool big-icon" title="Record a voice memo" aria-label="Record a voice memo"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21M8.5 21h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
           <button id="text-select-all" class="tool" title="Select all the typed text (Ctrl+A)">Select all</button>
           <button id="text-paste" class="tool" title="Paste (Ctrl+V)">📋 Paste</button>
         </div>
@@ -219,14 +224,51 @@
           <div id="note-body" class="note-body"></div>
           <div id="ink-wrap"><canvas id="ink"></canvas><div id="ink-items" class="ink-items"></div></div>
         </div>
+        <div id="backlinks" class="backlinks hidden"></div>
       </div>
     </section>
   </section>
 
+  <div id="link-pop" class="pick-menu link-pop hidden" role="listbox"></div>
+  <div id="remind-pop" class="convert-pop remind-pop hidden" role="dialog" aria-label="Reminder">
+    <div class="convert-head">⏰ Remind me about this note</div>
+    <div class="remind-quick">
+      <button data-q="hour">In 1 hour</button>
+      <button data-q="evening">This evening</button>
+      <button data-q="tomorrow">Tomorrow morning</button>
+      <button data-q="weekend">This weekend</button>
+      <button data-q="week">Next week</button>
+    </div>
+    <label class="remind-when">Date and time <input type="datetime-local" id="remind-at"></label>
+    <div class="convert-actions">
+      <button id="remind-clear" class="hidden">✓ Done / remove</button>
+      <button id="remind-cancel">Cancel</button>
+      <button id="remind-save" class="primary">Set reminder</button>
+    </div>
+  </div>
+  <div id="remind-banner" class="remind-banner hidden"></div>
   <div id="pick-menu" class="pick-menu hidden" role="menu">
     <button data-src="camera">📷 Take photo</button>
     <button data-src="photos">🖼 Photos</button>
     <button data-src="files">📁 Browse files</button>
+    <button data-src="scan" class="app-only">📄 Scan a document</button>
+    <button data-src="pdf">📕 PDF to write on</button>
+  </div>
+  <div id="pictext-pop" class="convert-pop hidden" role="dialog" aria-label="Text in picture">
+    <div class="convert-head">Text in this picture</div>
+    <div id="pictext-status" class="convert-status"></div>
+    <textarea id="pictext-text" rows="6"></textarea>
+    <div class="convert-actions">
+      <button id="pictext-copy">⧉ Copy</button>
+      <button id="pictext-add">Add to typed text</button>
+      <button id="pictext-close" class="primary">Close</button>
+    </div>
+  </div>
+  <div id="busy" class="toast hidden"></div>
+  <div id="rec-bar" class="rec-bar hidden" role="status">
+    <span class="rec-dot"></span><span id="rec-time">0:00</span>
+    <button id="rec-stop" class="primary">■ Stop &amp; save</button>
+    <button id="rec-cancel">Cancel</button>
   </div>
 
   <div id="update-banner" class="update-banner hidden">A new version is available. <button id="update-reload">Update now</button></div>

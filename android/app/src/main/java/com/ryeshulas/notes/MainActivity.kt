@@ -1,5 +1,6 @@
 package com.ryeshulas.notes
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
@@ -14,7 +15,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.content.pm.PackageManager
 import android.webkit.CookieManager
+import android.webkit.PermissionRequest
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -42,6 +48,8 @@ class MainActivity : Activity() {
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var cameraUri: Uri? = null
     private var showingError = false
+    private var micRequest: PermissionRequest? = null
+    private var scanCallback: String? = null
 
     /** What to do once the page is ready: {kind: new|write|open|share, id?} */
     @Volatile var pendingAction: String? = null
@@ -196,7 +204,13 @@ class MainActivity : Activity() {
         val images = JSONArray()
         for (u in uris.take(10)) {
             try {
-                val type = contentResolver.getType(u) ?: "image/jpeg"
+                val type = contentResolver.getType(u) ?: i.type ?: "image/jpeg"
+                if (type == "application/pdf") {
+                    val bytes = contentResolver.openInputStream(u)?.use { it.readBytes() } ?: continue
+                    if (bytes.size > 60 * 1024 * 1024) continue
+                    o.put("pdf", Base64.encodeToString(bytes, Base64.NO_WRAP)).put("pdfName", u.lastPathSegment ?: "shared.pdf")
+                    continue
+                }
                 if (!type.startsWith("image/")) continue
                 val bytes = contentResolver.openInputStream(u)?.use { it.readBytes() } ?: continue
                 if (bytes.size > 25 * 1024 * 1024) continue
@@ -211,6 +225,19 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------- picking pictures / files
 
     private inner class Chrome : WebChromeClient() {
+        // The microphone (voice memos): ask Android for permission the first time.
+        override fun onPermissionRequest(request: PermissionRequest) {
+            runOnUiThread {
+                if (!request.resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) { request.deny(); return@runOnUiThread }
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                } else {
+                    micRequest = request
+                    requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC)
+                }
+            }
+        }
+
         override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
             fileCallback?.onReceiveValue(null)
             fileCallback = callback
@@ -253,9 +280,71 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_MIC) {
+            val req = micRequest ?: return
+            micRequest = null
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) req.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+            else req.deny()
+        }
+    }
+
+    /** Reminders need permission to show notifications (Android 13+). Asked once. */
+    fun askNotificationPermission() = runOnUiThread {
+        if (Build.VERSION.SDK_INT < 33) return@runOnUiThread
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return@runOnUiThread
+        val p = getSharedPreferences("notes", MODE_PRIVATE)
+        if (p.getBoolean("asked_notifications", false)) return@runOnUiThread
+        p.edit().putBoolean("asked_notifications", true).apply()
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFY)
+    }
+
+    // ---------------------------------------------------------------- document scanner
+
+    fun startScan(callbackId: String) = runOnUiThread {
+        scanCallback = callbackId
+        val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(30)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+        GmsDocumentScanning.getClient(options).getStartScanIntent(this)
+            .addOnSuccessListener { sender ->
+                try { startIntentSenderForResult(sender, REQ_SCAN, null, 0, 0, 0) }
+                catch (e: Exception) { scanDone(JSONObject().put("error", e.message ?: "couldn't start the scanner")) }
+            }
+            .addOnFailureListener { scanDone(JSONObject().put("error", it.message ?: "the scanner isn't available")) }
+    }
+
+    private fun scanDone(result: JSONObject) {
+        val id = scanCallback ?: return
+        scanCallback = null
+        js("window.__androidCb && window.__androidCb(${JSONObject.quote(id)}, $result)")
+    }
+
+    private fun handleScanResult(resultCode: Int, data: Intent?) {
+        if (resultCode != RESULT_OK) { scanDone(JSONObject().put("error", "cancelled")); return }
+        val pages = GmsDocumentScanningResult.fromActivityResultIntent(data)?.pages ?: emptyList()
+        Thread {
+            var n = 0
+            for (page in pages) {
+                try {
+                    val bytes = contentResolver.openInputStream(page.imageUri)?.use { it.readBytes() } ?: continue
+                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    js("window.androidScanPage && window.androidScanPage('image/jpeg', '$b64')")
+                    n++
+                } catch (e: Exception) { /* skip that page */ }
+            }
+            runOnUiThread { scanDone(JSONObject().put("pages", n)) }
+        }.start()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_SCAN) { handleScanResult(resultCode, data); return }
         val cb = fileCallback ?: return
         fileCallback = null
         if (resultCode != RESULT_OK) { cb.onReceiveValue(null); return }
@@ -322,5 +411,8 @@ class MainActivity : Activity() {
         const val EXTRA_NOTE_ID = "notes_id"
         private const val REQ_FILE = 1
         private const val REQ_CAMERA = 2
+        private const val REQ_SCAN = 3
+        private const val REQ_MIC = 4
+        private const val REQ_NOTIFY = 5
     }
 }
