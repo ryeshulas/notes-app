@@ -465,11 +465,8 @@ html.dark .note-body > .picked { background: rgba(120, 170, 255, .28); }
 #editor.mode-write #text-pick-bar { display: none !important; }
 
 /* pin / unpin button in the note header */
-.pin-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: var(--text);
-  border: 1px solid var(--line); padding: 5px 10px; }
+.pin-btn { display: inline-flex; align-items: center; justify-content: center; color: var(--text);
+  border: 1px solid var(--line); padding: 6px 8px; }
 .pin-btn.on { background: #ffe9a8; border-color: #d99a00; color: #7a4f00; }
 html.dark .pin-btn.on { color: #ffd66b; border-color: #8a6a1a; }
-#note-folder.folder-below { order: 99; max-width: 112px; font-size: 14px; margin-left: auto; align-self: center; }
-@media (max-width: 600px) {
-  .pin-btn { padding: 5px 7px; }
-}
+

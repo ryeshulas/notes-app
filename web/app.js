@@ -1863,25 +1863,15 @@ $('#note-pin').addEventListener('click', () => {
   const n = getNote(state.openId);
   n.data = { ...n.data, pinned: !n.data.pinned };
   showPinButton(n.data.pinned);
-  toast(n.data.pinned ? '📌 Pinned to the top' : 'Unpinned');
   editor.queueSave(0);
 });
-// On phones the folder picker moves down next to the colors so the title has room.
-{
-  const folder = $('#note-folder'), spot = document.createComment('folder');
-  folder.before(spot);
-  const narrow = matchMedia('(max-width: 600px)');
-  const place = () => { if (narrow.matches) $('#note-colors').append(folder); else spot.after(folder); folder.classList.toggle('folder-below', narrow.matches); };
-  narrow.addEventListener('change', place);
-  place();
-}
 // The pin button says what tapping it will do: "Pin" when the note isn't pinned, "Unpin" (crossed-out pin) when it is.
 const PIN_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 4 4v2h-5v6l-1 1-1-1v-6H6v-2l4-4z" fill="currentColor"/></svg>';
 const UNPIN_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 4 4v2h-5v6l-1 1-1-1v-6H6v-2l4-4z" fill="currentColor" opacity=".55"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
 function showPinButton(pinned) {
   const b = $('#note-pin');
   b.classList.toggle('on', pinned);
-  b.innerHTML = `${pinned ? UNPIN_ICON : PIN_ICON}<span>${pinned ? 'Unpin' : 'Pin'}</span>`;
+  b.innerHTML = pinned ? UNPIN_ICON : PIN_ICON;
   b.title = pinned ? 'Unpin this note' : 'Pin this note to the top';
   b.setAttribute('aria-pressed', String(pinned));
 }
