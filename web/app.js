@@ -1109,7 +1109,8 @@ const ink = {
     if (this.finger && e.pointerId === this.finger.id) {
       const tap = !this.finger.moved;
       this.finger = null;
-      if (tap && this.tool !== 'select' && this.tool !== 'text') tapToType(e.clientX, e.clientY);
+      const drawingTool = ['pen', 'highlighter', 'eraser'].includes(this.tool);
+      if (tap && drawingTool && !this.sel.length && !itemAt(e.clientX, e.clientY)) tapToType(e.clientX, e.clientY);
       return;
     }
     if (this.moving) {
@@ -1374,12 +1375,38 @@ function setMode(m) {
 }
 $('#mode-type').addEventListener('click', () => { setMode('type'); body.focusEnd(); });
 $('#mode-write').addEventListener('click', () => setMode('write'));
-// The S Pen always writes: touching the page with it switches to Write and starts the stroke.
+// Picture, shape or label under a screen point (they ignore taps while typing, so check by position).
+function itemAt(x, y) {
+  const els = [...document.querySelectorAll('#ink-items .item')].reverse();
+  return els.find((el) => { const r = el.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; }) || null;
+}
+// Hand a press over to a picture/shape/label so it can be moved.
+function grabItem(el, e) {
+  if (ink.tool !== 'select') setTool('select');
+  const target = document.querySelector(`#ink-items .item[data-id="${el.dataset.id}"]`) || el;
+  target.dispatchEvent(new PointerEvent('pointerdown', {
+    pointerId: e.pointerId, pointerType: e.pointerType, isPrimary: e.isPrimary, clientX: e.clientX, clientY: e.clientY,
+    pressure: e.pressure, button: e.button, buttons: e.buttons, bubbles: true, cancelable: true,
+  }));
+}
 $('#page').addEventListener('pointerdown', (e) => {
-  if (state.mode !== 'type' || e.pointerType !== 'pen') return;
+  if (state.mode !== 'type') return;
+  const item = itemAt(e.clientX, e.clientY);
+  // Pressing on a picture, shape or label (pen, finger or mouse) switches to Write and picks it up.
+  if (item) {
+    e.preventDefault();
+    e.stopPropagation();
+    setMode('write');
+    grabItem(item, e);
+    return;
+  }
+  // The S Pen always writes: touching the page with it switches to Write and starts the stroke
+  // (or the lasso, if that's the tool picked).
+  if (e.pointerType !== 'pen') return;
   e.preventDefault();
   e.stopPropagation();
   setMode('write');
+  if (ink.tool === 'select' || ink.tool === 'text') setTool('pen');
   ink.down(e);
 }, { capture: true });
 // In Type mode, tapping below the text starts typing there. If there's a drawing, shape or

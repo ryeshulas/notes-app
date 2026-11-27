@@ -2,6 +2,11 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.21.0
+- Pictures, shapes and labels can be moved again from either mode: press on one (S Pen, finger or mouse) and it switches to Write with Select and picks it up.
+- The S Pen lasso works when starting from Type mode.
+- In Write mode, a finger tap no longer switches to typing while using Select or Lasso, while something is lasso-selected, or when tapping a picture or shape.
+
 ## 0.20.0
 - Tap below a drawing, shape or picture to start typing there. Works whether you drew first or typed first, and again after each drawing. (Tapping where there's nothing drawn between the text and your tap just continues the text.)
 
