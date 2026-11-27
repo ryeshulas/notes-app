@@ -110,8 +110,8 @@ function getNote(id) {
   return state.records.get(keyOf('note', id));
 }
 
-async function save(kind, id, data, deleted = false) {
-  const rec = { key: keyOf(kind, id), kind, id, data, updated_at: Date.now(), deleted };
+async function save(kind, id, data, deleted = false, extra = {}) {
+  const rec = { key: keyOf(kind, id), kind, id, data, updated_at: Date.now(), deleted, ...extra };
   state.records.set(rec.key, rec);
   await idb.tx(['records', 'outbox'], 'readwrite', ([r, o]) => { r.put(rec); o.put(rec); });
   bc?.postMessage({ type: 'changed', keys: [rec.key] });
@@ -206,7 +206,7 @@ async function sync() {
       let outbox = await idb.all('outbox');
       while (more) {
         const since = await meta.get('since', 0);
-        const sent = outbox.map(({ kind, id, data, updated_at, deleted }) => ({ kind, id, data, updated_at, deleted }));
+        const sent = outbox.map(({ kind, id, data, updated_at, deleted, restore }) => ({ kind, id, data, updated_at, deleted, restore }));
         const resp = await api('/api/sync', { since, changes: sent });
         // Clear outbox entries that weren't edited again while we were syncing.
         const sentAt = new Map(sent.map((s) => [keyOf(s.kind, s.id), s.updated_at]));
@@ -292,7 +292,7 @@ $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('#login-error').textContent = '';
   try {
-    const device = `Web — ${navigator.userAgentData?.platform || navigator.platform || 'browser'}`;
+    const device = deviceLabel();
     const { token } = await api('/api/login', { password: $('#login-password').value, device });
     state.token = token;
     await meta.set('token', token);
@@ -1209,6 +1209,189 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && state.openId && !isPopout) closeEditor();
 });
 
+// ---------------------------------------------------------------- device name (shown in version history)
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? 'Android phone' : 'Android tablet';
+  if (/iPhone/i.test(ua)) return 'iPhone';
+  if (/iPad/i.test(ua)) return 'iPad';
+  if (/Windows/i.test(ua)) return 'Windows PC';
+  if (/Macintosh/i.test(ua)) return 'Mac';
+  if (/Linux/i.test(ua)) return 'Linux PC';
+  return 'Browser';
+}
+
+// ---------------------------------------------------------------- note menu: history, print
+$('#note-more').addEventListener('click', (e) => { e.stopPropagation(); $('#note-menu').classList.toggle('hidden'); });
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#note-menu, #note-more')) $('#note-menu').classList.add('hidden'); });
+
+const REASONS = {
+  'other-device': 'Before an edit from another device',
+  periodic: 'Earlier copy',
+  'before-delete': 'Before it was deleted',
+  'before-restore': 'Before an older version was restored',
+  conflict: 'An edit that arrived late and was replaced by a newer one',
+};
+function whenText(t) {
+  const d = new Date(t);
+  return d.toLocaleString([], { month: 'short', day: 'numeric', year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined, hour: 'numeric', minute: '2-digit' });
+}
+async function apiGet(path) {
+  const res = await fetch(path, { headers: { Authorization: `Bearer ${state.token}` }, cache: 'no-store' });
+  if (!res.ok) throw Object.assign(new Error(res.status === 401 ? 'Not signed in' : `Server error (${res.status})`), { status: res.status });
+  return res.json();
+}
+$('#open-history').addEventListener('click', async () => {
+  $('#note-menu').classList.add('hidden');
+  const id = state.openId;
+  if (!id) return;
+  await editor.flush();
+  await sync();
+  const list = $('#history-list');
+  list.textContent = 'Loading…';
+  $('#history').classList.remove('hidden');
+  try {
+    const { current, versions } = await apiGet(`/api/versions?id=${encodeURIComponent(id)}`);
+    list.textContent = '';
+    const card = (v, isCurrent) => {
+      const el = document.createElement('div');
+      el.className = `hv${isCurrent ? ' current' : ''}`;
+      const top = document.createElement('div'); top.className = 'hv-top';
+      const when = document.createElement('span'); when.className = 'hv-when'; when.textContent = isCurrent ? `Current — ${whenText(v.updated_at)}` : whenText(v.updated_at);
+      const why = document.createElement('span'); why.className = `hv-why${v.reason === 'conflict' ? ' conflict' : ''}`;
+      why.textContent = [isCurrent ? '' : (REASONS[v.reason] || ''), v.device ? `from ${v.device}` : ''].filter(Boolean).join(' · ');
+      top.append(when, why);
+      const txt = document.createElement('div'); txt.className = 'hv-text';
+      txt.textContent = [v.title, (v.text || '').replace(/^\[image\]$/gm, '🖼')].filter(Boolean).join('\n') || '(no text)';
+      if (v.ink) txt.textContent += `\n✏️ drawing / ${v.ink} item(s)`;
+      el.append(top, txt);
+      if (!isCurrent) {
+        const b = document.createElement('button');
+        b.textContent = 'Restore this version';
+        b.addEventListener('click', () => restoreVersion(v.vid));
+        el.append(b);
+      }
+      list.append(el);
+    };
+    if (current) card(current, true);
+    versions.forEach((v) => card(v, false));
+    if (!versions.length) { const p = document.createElement('p'); p.className = 'history-help'; p.textContent = 'No earlier versions yet. They appear as the note is edited over time or on other devices.'; list.append(p); }
+  } catch (err) {
+    list.textContent = err.status ? err.message : 'Version history needs a connection to the server.';
+  }
+});
+$('#history-close').addEventListener('click', () => $('#history').classList.add('hidden'));
+async function restoreVersion(vid) {
+  if (!confirm('Replace the current note with this version? The current note will be kept in the history.')) return;
+  try {
+    const v = await apiGet(`/api/versions/${vid}`);
+    await save('note', v.id, v.data, false, { restore: true });
+    await sync();
+    $('#history').classList.add('hidden');
+    editor.load(v.id);
+    renderSidebar(); renderList();
+  } catch (err) { alert(`Couldn't restore: ${err.message}`); }
+}
+
+// Print / Save as PDF: hide empty drawing space, trim the drawing to what's on it.
+$('#print-note').addEventListener('click', () => { $('#note-menu').classList.add('hidden'); window.print(); });
+window.addEventListener('beforeprint', () => {
+  if (!state.openId) return;
+  const wrap = $('#ink-wrap');
+  const used = Math.max(ink.strokes.reduce((m, st) => { for (let i = 1; i < st.p.length; i += 3) m = Math.max(m, st.p[i]); return m; }, 0), canvasItems.lowestPoint());
+  if (!used) { wrap.classList.add('print-empty'); return; }
+  // Draw at the printed page's width so nothing stretches, and trim the empty space below.
+  wrap.style.width = '680px';
+  ink.resize();
+  wrap.style.height = `${(used + 30) * ink.scale()}px`;
+  wrap.style.overflow = 'hidden';
+  // Browsers print canvases on a solid white background, which would hide photos underneath,
+  // so print a transparent snapshot of the ink instead.
+  const snap = document.createElement('img');
+  snap.id = 'ink-print';
+  snap.src = ink.canvas.toDataURL('image/png');
+  snap.style.cssText = `position:absolute;left:0;top:0;width:${ink.canvas.clientWidth}px;height:${ink.canvas.clientHeight}px;z-index:1;pointer-events:none`;
+  wrap.append(snap);
+});
+window.addEventListener('afterprint', () => {
+  const wrap = $('#ink-wrap');
+  wrap.classList.remove('print-empty');
+  wrap.style.height = ''; wrap.style.overflow = ''; wrap.style.width = '';
+  $('#ink-print')?.remove();
+  if (state.openId) ink.resize();
+});
+
+// ---------------------------------------------------------------- export / import
+$('#export-btn').addEventListener('click', async () => {
+  const withImages = confirm('Include images in the export file?\n\nOK = include images (bigger file)\nCancel = text and drawings only');
+  try {
+    await sync();
+    const res = await fetch(`/api/export${withImages ? '?images=1' : ''}`, { headers: { Authorization: `Bearer ${state.token}` } });
+    if (!res.ok) throw new Error(`server error ${res.status}`);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `notes-export-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (err) { alert(`Export needs a connection to the server (${err.message}).`); }
+});
+$('#import-btn').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      const doc = JSON.parse(await file.text());
+      if (doc.app !== 'notes' || !Array.isArray(doc.records)) throw new Error('this isn\'t a notes export file');
+      const result = await importRecords(doc);
+      alert(`Imported ${result.added} note(s) and ${result.folders} folder(s).${result.skipped ? ` ${result.skipped} were already up to date.` : ''}${result.images ? ` ${result.images} image(s).` : ''}`);
+    } catch (err) { alert(`Couldn't import: ${err.message}`); }
+  };
+  input.click();
+});
+// Records keep their original dates; ones already here and newer are left alone.
+async function importRecords(doc) {
+  const r = { added: 0, folders: 0, skipped: 0, images: 0 };
+  for (const f of doc.files || []) {
+    if (!f.id || !f.data || await idb.get('files', f.id)) continue;
+    const bin = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0));
+    await files.put(f.id, new Blob([bin], { type: f.type || 'image/jpeg' }));
+    r.images++;
+  }
+  const recs = [];
+  for (const x of doc.records) {
+    if (!['note', 'folder'].includes(x.kind) || typeof x.id !== 'string' || !x.data || x.data.purged) continue;
+    const key = keyOf(x.kind, x.id);
+    const local = state.records.get(key);
+    if (local && local.updated_at >= x.updated_at) { r.skipped++; continue; }
+    const rec = { key, kind: x.kind, id: x.id, data: x.data, updated_at: Number(x.updated_at) || Date.now(), deleted: !!x.deleted };
+    state.records.set(key, rec);
+    recs.push(rec);
+    if (x.kind === 'note') r.added++; else r.folders++;
+  }
+  await idb.tx(['records', 'outbox'], 'readwrite', ([rs, o]) => { recs.forEach((rec) => { rs.put(rec); o.put(rec); }); });
+  renderSidebar(); renderList();
+  await sync();
+  return r;
+}
+
+// Remove cached images on this device that no note uses any more (once a day).
+async function pruneLocalFiles() {
+  const last = await meta.get('lastPrune', 0);
+  if (Date.now() - last < 24 * 60 * 60 * 1000) return;
+  const used = new Set();
+  for (const rec of state.records.values()) {
+    for (const it of rec.data?.ink?.items || []) if (it.file) used.add(it.file);
+    for (const b of rec.data?.blocks || []) if (b.file) used.add(b.file);
+  }
+  const all = await idb.all('files');
+  for (const f of all) if (!f.pending && !used.has(f.id)) await idb.del('files', f.id);
+  await meta.set('lastPrune', Date.now());
+}
+
 // ---------------------------------------------------------------- startup
 function renderAll() { renderSidebar(); renderList(); renderSyncStatus(); }
 
@@ -1229,7 +1412,7 @@ async function init() {
   if (isPopout && params.get('note')) openNote(params.get('note'), { pushHistory: false });
   else if (params.has('new')) { history.replaceState(null, '', '/'); newNote(params.get('new')); }
 
-  sync();
+  sync().then(() => pruneLocalFiles()).catch(() => {});
   checkForUpdate();
   setInterval(() => { sync(); checkForUpdate(); }, SYNC_INTERVAL);
 }

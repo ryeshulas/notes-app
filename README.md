@@ -56,8 +56,24 @@ and, later, a sideloaded Android app.
 
 ## Backups
 
-Everything is in `data/notes.db` (plus `-wal`/`-shm` files while running). Back up the whole `data` folder.
-For a guaranteed-consistent copy, `sudo docker compose stop` first, or use `sqlite3 notes.db ".backup copy.db"`.
+Back up the whole data folder (e.g. `/volume1/docker/notes/data`) with restic/Backrest. It contains:
+
+| Path | What |
+| --- | --- |
+| `notes.db` | The live database (notes, folders, version history). |
+| `backups/notes-YYYY-MM-DD.db` | A consistent copy of the database made by the server once a day; the last 14 are kept. These are always safe to restore even if the live file was being written during the backup. |
+| `files/` | Images. |
+
+To restore: stop the container, copy a `backups/notes-….db` over `notes.db` (delete `notes.db-wal` and `notes.db-shm`), start it again.
+
+The app also has **Export all notes** (one file, optionally with images) and **Import notes** in the folder menu,
+and **Print / Save as PDF** for a single note.
+
+## Housekeeping (automatic)
+
+- Notes in the Trash for more than 30 days are deleted for good.
+- Version history is kept for 90 days, up to 50 versions per note.
+- Images no note (or saved version) uses are removed after a week.
 
 ## Sync model
 

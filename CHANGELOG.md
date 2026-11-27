@@ -2,6 +2,21 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.13.0
+- **Version history** (⋯ menu in a note → Version history). The server keeps earlier copies of each note:
+  before an edit from another device, before a delete or restore, every 10 minutes while editing, and any
+  edit that arrived late and lost to a newer one (so a sync conflict never silently loses work).
+  Restore any version; the current one is kept too. Kept 90 days, up to 50 per note.
+- **Print / Save as PDF** (⋯ menu) prints just the note, with its drawing, labels and photos.
+- **Export all notes** / **Import notes** in the folder menu. Export can include images. Import keeps
+  original dates and skips notes that are already up to date (so importing twice is safe).
+- **Automatic backups**: the server writes a consistent copy of the database every day to `data/backups`
+  (last 14 kept) for restic/Backrest.
+- **Cleanup**: Trash is emptied after 30 days; images no note uses are removed after a week (server) and
+  from each device's offline cache.
+- Devices are named (e.g. "Windows PC", "Android phone") so history shows where an edit came from.
+  Devices signed in before this version show as their old name.
+
 ## 0.12.0
 - White added to the text colors and label colors.
 - Adding an image now offers **Take photo**, **Photos** or **Browse files**. Browse files opens the

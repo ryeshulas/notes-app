@@ -30,6 +30,10 @@
       <nav id="folders"></nav>
       <button id="add-folder" class="link">+ New folder</button>
       <div id="version" class="version">Version __APP_VERSION__</div>
+      <div class="data-tools">
+        <button id="export-btn" class="link" title="Download all notes as one file">⤓ Export all notes</button>
+        <button id="import-btn" class="link" title="Add notes from an export file">⤒ Import notes</button>
+      </div>
       <div class="sidebar-foot">
         <button id="pin-menu" class="pin-menu" title="Keep the folder menu open">📌 Keep open</button>
         <span id="sync-status" class="sync" title="Sync status">●</span>
@@ -56,8 +60,22 @@
         <select id="note-folder" aria-label="Folder"></select>
         <button id="note-pin" class="icon-btn" title="Pin">📌</button>
         <button id="note-popout" class="icon-btn desktop-only" title="Open in its own window">⧉</button>
+        <button id="note-more" class="icon-btn" title="More: history, print / PDF" aria-label="More">⋯</button>
         <button id="note-delete" class="icon-btn" title="Move to trash">🗑</button>
       </header>
+      <div id="note-menu" class="pick-menu note-menu hidden" role="menu">
+        <button id="open-history">🕘 Version history</button>
+        <button id="print-note">🖨 Print / Save as PDF</button>
+      </div>
+      <div id="history" class="history hidden">
+        <div class="history-head">
+          <strong>Version history</strong>
+          <button id="history-close" class="icon-btn" aria-label="Close">✕</button>
+        </div>
+        <p class="history-help">Earlier copies of this note, kept for 90 days. Restoring one replaces the current note,
+          and the current note is kept here too, so you can always go back.</p>
+        <div id="history-list"></div>
+      </div>
       <div class="colors" id="note-colors"></div>
       <div id="editor-scroll">
         <div class="format-tools">
