@@ -2,6 +2,11 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.26.0
+- The pin button in a note now says what it will do: **Pin** (pin icon) when the note isn't pinned, and a highlighted **Unpin** (crossed-out pin) when it is. A short message confirms "Pinned to the top" / "Unpinned".
+- On phones the folder picker sits on the color row so the title has more room.
+- The multi-select bar shows **✕ Unpin** when all picked notes are pinned.
+
 ## 0.25.0
 - The eraser now erases just the part of a shape under it (outline or fill), like handwriting. A shape the eraser has touched becomes regular ink, so afterwards it's selected with the Lasso rather than Select. Undo restores the original shape.
 
