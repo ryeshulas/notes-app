@@ -660,6 +660,15 @@ const BodyEditor = (() => {
         }
         return null;
       },
+      // Add lines of text at the end of the note.
+      appendText(text) {
+        readAll();
+        const add = String(text).split('\n').map((s) => clean({ t: 'p', s }));
+        while (blocks.length > 1 && blocks[blocks.length - 1].t === 'p' && !blocks[blocks.length - 1].s) blocks.pop();
+        if (blocks.length === 1 && blocks[0].t === 'p' && !blocks[0].s) blocks = add;
+        else blocks = blocks.concat(add);
+        structural(blocks.length - 1, 'end');
+      },
       // Make the note end with exactly n empty lines after the last real content and put the cursor on the last one.
       blankLinesAtEnd(n) {
         readAll();

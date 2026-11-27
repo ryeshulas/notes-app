@@ -434,3 +434,19 @@ html.dark .theme-pick { color: var(--muted); }
 
 .tool-pic { display: inline-flex; align-items: center; gap: 5px; }
 .tool-label { font-size: 13px; font-weight: 600; }
+
+/* ---- Android app ---- */
+.app-only { display: none !important; }
+html.in-app .app-only { display: revert !important; }
+html.in-app #note-popout, html.in-app #pip-note { display: none !important; }
+.convert-pop { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(560px, calc(100vw - 24px));
+  background: var(--card, #fff); color: var(--text); border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.25); padding: 14px; z-index: 60; }
+.convert-head { font-weight: 700; margin-bottom: 6px; }
+.convert-status { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.convert-pop textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 17px; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.7); color: inherit; resize: vertical; }
+.convert-alts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.convert-alts button { border: 1px solid var(--line); background: none; border-radius: 14px; padding: 4px 10px; font-size: 14px; color: inherit; }
+.convert-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+.convert-actions button { padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.7); font-size: 15px; color: inherit; }
+.convert-actions .primary { background: #f5c84c; border-color: #d99a00; color: #2b2a26; font-weight: 600; }
+html.dark .convert-pop { background: #2c2b27; }

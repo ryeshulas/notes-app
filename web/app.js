@@ -18,6 +18,7 @@ const INK_W = 1000;          // logical canvas width; strokes are stored in thes
 const DEFAULT_INK_H = 900;
 const SYNC_INTERVAL = 30000;
 const APP_VERSION = '__APP_VERSION__';  // filled in by the server
+const android = window.NotesAndroid || null;  // set when running inside the Android app
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -312,6 +313,7 @@ $('#login-form').addEventListener('submit', async (e) => {
     showApp();
     renderAll();
     sync();
+    if (android) window.androidOpen();
   } catch (err) {
     $('#login-error').textContent = err.status === 401 ? 'Wrong password' : (err.message || 'Could not reach the server');
   }
@@ -453,6 +455,7 @@ function noteDate(t) {
 }
 
 function renderList() {
+  if (android) pushRecentSoon();
   if (isPopout) return;
   $('#list-title').textContent = viewTitle();
   const grid = $('#notes');
@@ -1840,7 +1843,14 @@ $('#pip-note').addEventListener('click', async () => {
 });
 
 // Print / Save as PDF: hide empty drawing space, trim the drawing to what's on it.
-$('#print-note').addEventListener('click', () => { $('#note-menu').classList.add('hidden'); window.print(); });
+$('#print-note').addEventListener('click', () => {
+  $('#note-menu').classList.add('hidden');
+  if (!android) { window.print(); return; }
+  // The app prints through Android's print service (printer or Save as PDF).
+  window.dispatchEvent(new Event('beforeprint'));
+  window.androidPrintDone = () => { window.androidPrintDone = null; window.dispatchEvent(new Event('afterprint')); };
+  setTimeout(() => android.print($('#note-title').value || 'Note'), 200);
+});
 let printedDark = false;
 window.addEventListener('beforeprint', () => {
   if (!state.openId) return;
@@ -1881,6 +1891,8 @@ $('#export-btn').addEventListener('click', async () => {
     const res = await fetch(`/api/export${withImages ? '?images=1' : ''}`, { headers: { Authorization: `Bearer ${state.token}` } });
     if (!res.ok) throw new Error(`server error ${res.status}`);
     const blob = await res.blob();
+    const name = `notes-export-${new Date().toISOString().slice(0, 10)}.json`;
+    if (android) { android.saveFile(name, 'application/json', await blobToBase64(blob)); return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `notes-export-${new Date().toISOString().slice(0, 10)}.json`;
@@ -1961,6 +1973,7 @@ function applyTheme() {
   const dark = t === 'dark' || (t === 'auto' && darkQuery.matches);
   document.documentElement.classList.toggle('dark', dark);
   document.querySelector('meta[name="theme-color"]').content = dark ? '#24231f' : '#f5c84c';
+  if (android) setTimeout(() => android.setBars(dark ? '#24231f' : '#f5f3ee', dark), 0);
   $('#theme').value = t;
   renderList();
   if (state.openId) { editor.load(state.openId); }
@@ -1990,6 +2003,7 @@ async function init() {
   if (isPopout && params.get('note')) openNote(params.get('note'), { pushHistory: false });
   else if (params.has('new')) { history.replaceState(null, '', '/'); newNote(params.get('new')); }
 
+  if (android) window.androidOpen();
   sync().then(() => pruneLocalFiles()).catch(() => {});
   checkForUpdate();
   setInterval(() => { sync(); checkForUpdate(); }, SYNC_INTERVAL);
@@ -2018,6 +2032,166 @@ document.addEventListener('visibilitychange', () => {
   else sync();
 });
 window.addEventListener('pagehide', () => editor.flush());
+
+// ---------------------------------------------------------------- Android app extras
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+function base64ToFile(b64, name, type) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], name || 'picture', { type: type || 'image/jpeg' });
+}
+if (android) {
+  document.documentElement.classList.add('in-app');
+  $('#version').textContent = `Version ${APP_VERSION} · App ${android.appVersion()}`;
+  $('#app-server').addEventListener('click', () => android.settings());
+  $('#app-update').addEventListener('click', () => android.checkUpdate());
+  setTimeout(() => { const d = document.documentElement.classList.contains('dark'); android.setBars(d ? '#24231f' : '#f5f3ee', d); }, 0);
+}
+
+// Recent notes for the home screen widget.
+var recentTimer = null;  // var: renderList can run before this line
+function pushRecentSoon() {
+  clearTimeout(recentTimer);
+  recentTimer = setTimeout(() => {
+    const list = notes().filter((n) => !n.deleted)
+      .sort((a, b) => (Number(!!b.data.pinned) - Number(!!a.data.pinned)) || (b.updated_at - a.updated_at))
+      .slice(0, 5)
+      .map((n) => {
+        const lines = (n.data.text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+        const title = (n.data.title || '').trim() || lines.shift() || ((n.data.ink?.strokes?.length) ? 'Handwritten note' : 'Untitled');
+        return { id: n.id, title: title.slice(0, 60), snip: (lines[0] || '').slice(0, 80) };
+      });
+    try { android.updateRecent(JSON.stringify(list)); } catch { /* ignore */ }
+  }, 800);
+}
+
+// Widget buttons, the Quick Settings tile and sharing from other apps.
+window.androidOpen = () => {
+  if (!android || !state.token) return;
+  let a = null;
+  try { a = JSON.parse(android.takeAction() || 'null'); } catch { /* ignore */ }
+  if (!a) return;
+  if (a.kind === 'new') newNote('text');
+  else if (a.kind === 'write') { newNote('draw'); setMode('write'); }
+  else if (a.kind === 'open' && a.id && getNote(a.id)) openNote(a.id);
+  else if (a.kind === 'home' && state.openId) closeEditor();
+  else if (a.kind === 'share') openShared();
+};
+async function openShared() {
+  let s = null;
+  try { s = JSON.parse(android.takeShared() || 'null'); } catch { /* ignore */ }
+  if (!s) return;
+  newNote('text');
+  if (s.title) { $('#note-title').value = s.title.slice(0, 200); }
+  if (s.text) body.appendText(s.text);
+  editor.queueSave(0);
+  if (s.images?.length) {
+    setMode('write');
+    await new Promise((r) => setTimeout(r, 100));
+    await addCanvasImages(s.images.map((im) => base64ToFile(im.data, im.name, im.type)));
+  }
+}
+
+// Android back button: close whatever is open, one step at a time.
+window.androidBack = () => {
+  const open = (sel) => { const el = $(sel); return el && !el.classList.contains('hidden'); };
+  if (open('#convert-pop')) { closeConvert(); return true; }
+  if (open('#pick-menu')) { $('#pick-menu').classList.add('hidden'); return true; }
+  if (open('#note-menu')) { $('#note-menu').classList.add('hidden'); return true; }
+  if (open('#history')) { $('#history').classList.add('hidden'); return true; }
+  if (state.openId && ink.sel.length) { ink.clearSelection(); return true; }
+  if (state.openId) { $('#back').click(); return true; }
+  if ($('#sidebar').classList.contains('open')) { setDrawer(false); return true; }
+  if (state.selecting) { stopSelecting(); return true; }
+  if ($('#search').value) { $('#search').value = ''; $('#search').dispatchEvent(new Event('input')); return true; }
+  return false;
+};
+
+// ---- handwriting to text (Android app: Google ML Kit on the device) ----
+// Group the selected strokes into lines of writing, top to bottom; keep writing order within a line.
+function strokeLines(strokes) {
+  const boxes = strokes.map((st, order) => {
+    let y1 = Infinity, y2 = -Infinity;
+    for (let i = 1; i < st.p.length; i += 3) { y1 = Math.min(y1, st.p[i]); y2 = Math.max(y2, st.p[i]); }
+    return { st, order, y1, y2, cy: (y1 + y2) / 2 };
+  }).filter((b) => b.st.t !== 'highlighter');
+  const lines = [];
+  for (const b of boxes.slice().sort((a, c) => a.cy - c.cy)) {
+    const line = lines.find((l) => b.cy >= l.y1 && b.cy <= l.y2 || (Math.min(b.y2, l.y2) - Math.max(b.y1, l.y1)) > 0.5 * Math.min(b.y2 - b.y1 || 1, l.y2 - l.y1 || 1));
+    if (line) { line.items.push(b); line.y1 = Math.min(line.y1, b.y1); line.y2 = Math.max(line.y2, b.y2); }
+    else lines.push({ y1: b.y1, y2: b.y2, items: [b] });
+  }
+  lines.sort((a, c) => a.y1 - c.y1);
+  return lines.map((l) => ({ ...l, items: l.items.sort((a, c) => a.order - c.order) }));
+}
+let convertJob = null;
+function closeConvert() { $('#convert-pop').classList.add('hidden'); convertJob = null; }
+$('#lasso-text').addEventListener('click', () => {
+  if (!android || !ink.sel.length) return;
+  const sel = ink.sel.slice();
+  const lines = strokeLines(sel);
+  if (!lines.length) return;
+  const id = String(Date.now());
+  convertJob = { id, sel, lines, box: ink.selBox.slice() };
+  $('#convert-status').textContent = 'Reading your handwriting…';
+  $('#convert-text').value = '';
+  $('#convert-alts').textContent = '';
+  $('#convert-pop').classList.remove('hidden');
+  const payload = lines.map((l) => l.items.map((b) => { const f = []; for (let i = 0; i < b.st.p.length; i += 3) f.push(b.st.p[i], b.st.p[i + 1]); return f; }));
+  android.recognize(JSON.stringify(payload), id);
+});
+window.__androidCb = (id, res) => {
+  if (!convertJob || convertJob.id !== id) return;
+  if (res.status === 'downloading') { $('#convert-status').textContent = 'Downloading the handwriting model (one time, about 20 MB)…'; return; }
+  if (res.error) { $('#convert-status').textContent = res.error; return; }
+  const lines = res.lines || [];
+  $('#convert-text').value = lines.map((l) => l.text).join('\n');
+  $('#convert-status').textContent = lines.length ? 'Check the text, fix anything that\'s wrong, then choose what to do with it.' : 'No writing found.';
+  const alts = $('#convert-alts');
+  alts.textContent = '';
+  if (lines.length === 1) {
+    for (const t of lines[0].alts || []) {
+      const b = document.createElement('button');
+      b.textContent = t;
+      b.addEventListener('click', () => { $('#convert-text').value = t; });
+      alts.append(b);
+    }
+  }
+};
+function removeConverted() {
+  const gone = new Set(convertJob.sel);
+  ink.pushUndo();
+  ink.strokes = ink.strokes.filter((st) => !gone.has(st));
+  ink.sel = []; ink.selBox = null; showLassoBar();
+  ink.renderBase(); ink.onChange?.();
+}
+$('#convert-label').addEventListener('click', () => {
+  const text = $('#convert-text').value.trim();
+  if (!convertJob || !text) return;
+  const { box, lines } = convertJob;
+  const lineH = lines.reduce((s, l) => s + (l.y2 - l.y1), 0) / lines.length;
+  removeConverted();
+  canvasItems.addText(box[0], box[1], text, Math.max(24, Math.min(72, lineH * 0.7)));
+  closeConvert();
+});
+$('#convert-body').addEventListener('click', () => {
+  const text = $('#convert-text').value.trim();
+  if (!convertJob || !text) return;
+  removeConverted();
+  closeConvert();
+  setMode('type');
+  body.appendText(text);
+  editor.queueSave(0);
+});
+$('#convert-cancel').addEventListener('click', closeConvert);
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 init();

@@ -2,6 +2,10 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.23.0
+- Android app 1.0.0 (see README → Android app): handwriting to text with the S Pen (Lasso → **Aa To text**), home screen widget, Quick Settings tile, share into Notes, export to Downloads, print / save as PDF, update notices.
+- The web app recognises the Android app: shows both versions under the folders, hides the pop-out and keep-on-top buttons there, and the phone's Back button closes things one step at a time.
+
 ## 0.22.0
 - Pictures are now added only in Write mode, with a labeled **Picture** button, so every picture can be dragged and resized freely. (The Type-mode Picture button is gone; pictures already in a note's text stay where they are.)
 - New pictures appear where you can see them: just below the text if it's on screen, otherwise at the top of the view, clear of the picture menu.

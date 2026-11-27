@@ -54,6 +54,43 @@ and, later, a sideloaded Android app.
 - **Offline**: edits are saved on the device first and sync when the server is reachable (the dot in the sidebar: green synced, amber waiting, red offline).
 - **Trash**: deleted notes can be restored, or deleted forever.
 
+## Android app
+
+The app (in `android/`) runs the same notes web app from your server, so web updates show up in the app
+automatically and it works offline the same way. On top of that it adds:
+
+- **Handwriting to text** (S Pen): in Write mode, circle writing with the Lasso, then **Aa To text**. Fix the
+  text if needed, then **Replace handwriting** (typed text in the same spot) or **Add to typed text**.
+  Uses Google ML Kit on the device; the English model (~20 MB) downloads the first time, then works offline.
+- **Home screen widget**: **+ Type** / **✍ Write** buttons and your five most recent notes.
+- **Quick Settings tile** "New note": pull down the shade, tap the pencil, then add the tile.
+- **Share into Notes**: share text, links or pictures from any app to make a new note.
+- Export saves to **Downloads**; Print / PDF uses Android's print screen (choose *Save as PDF*).
+- The app checks GitHub for a newer APK twice a day and offers to download it.
+
+### One-time setup: the signing key
+
+The APK is signed so updates install over the top. The key goes in two repository secrets
+(GitHub → repo **Settings → Secrets and variables → Actions → New repository secret**):
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_B64` | the long text from the signing file |
+| `ANDROID_KEYSTORE_PASSWORD` | the password from the signing file |
+
+Keep a copy of the signing file somewhere safe (e.g. your password manager). If the key is lost, the app has
+to be uninstalled and reinstalled to update (unsynced changes on that device would be lost).
+
+### Building and installing
+
+1. GitHub → **Actions → Build Android app → Run workflow** (it also runs whenever `android/` changes).
+2. On the phone or tablet, open **github.com/ryeshulas/notes-app/releases**, tap `notes-app-X.Y.Z.apk`, then
+   **Install**. The first time, Android asks to allow your browser to install apps; allow it.
+3. Open **Notes**, enter your server address (the tunnel address), and sign in with your password.
+
+To release a new app version, bump the number in `android/VERSION`; the workflow publishes a release named
+`android-vX.Y.Z`. Changes to the web app (`web/`) don't need a new APK.
+
 ## Backups
 
 Back up the whole data folder (e.g. `/volume1/docker/notes/data`) with restic/Backrest. It contains:

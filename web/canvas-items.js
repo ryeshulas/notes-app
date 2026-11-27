@@ -385,6 +385,14 @@ const CanvasItems = (() => {
         startEditing(it.id);
         return it;
       },
+      addText(x, y, s, size) {
+        const it = { id: uid(), k: 'text', x, y, s, size: Math.round(size || 28), st: {} };
+        items.push(it);
+        keepInside(it);
+        render();
+        changed();
+        return it;
+      },
       addImage(file, w, h, x, y) {
         const it = { id: uid(), k: 'img', file, x, y, w, h };
         items.push(it);

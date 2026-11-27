@@ -40,6 +40,10 @@
         <button id="export-btn" class="link" title="Download all notes as one file">⤓ Export all notes</button>
         <button id="import-btn" class="link" title="Add notes from an export file">⤒ Import notes</button>
       </div>
+      <div class="data-tools app-only">
+        <button id="app-server" class="link" title="Change the notes server address">⚙️ Server address</button>
+        <button id="app-update" class="link" title="Look for a newer version of the Android app">⟳ Check for app update</button>
+      </div>
       <div class="sidebar-foot">
         <select id="theme" class="theme-pick" title="Light or dark appearance">
           <option value="auto">🌓 Appearance: automatic</option>
@@ -185,6 +189,7 @@
             <span class="bar-title">Selection</span>
             <span id="lasso-count" class="bar-sub"></span>
             <span class="bar-hint">Drag inside the box to move</span>
+            <button id="lasso-text" class="app-only" title="Turn the handwriting into typed text">Aa To text</button>
             <button id="lasso-dup" title="Make a copy">⧉ Duplicate</button>
             <button id="lasso-delete" class="danger" title="Delete the selected handwriting">🗑 Delete</button>
             <button id="lasso-done" title="Done">✓ Done</button>
@@ -208,6 +213,17 @@
 
   <div id="update-banner" class="update-banner hidden">A new version is available. <button id="update-reload">Update now</button></div>
 
+  <div id="convert-pop" class="convert-pop hidden">
+    <div class="convert-head">Handwriting to text</div>
+    <div id="convert-status" class="convert-status"></div>
+    <textarea id="convert-text" rows="3" spellcheck="true"></textarea>
+    <div id="convert-alts" class="convert-alts"></div>
+    <div class="convert-actions">
+      <button id="convert-label" class="primary" title="Swap the handwriting for typed text in the same spot">Replace handwriting</button>
+      <button id="convert-body" title="Add the text to the end of the typed text and remove the handwriting">Add to typed text</button>
+      <button id="convert-cancel">Cancel</button>
+    </div>
+  </div>
   <script src="/body-editor.js?v=__APP_VERSION__"></script>
   <script src="/canvas-items.js?v=__APP_VERSION__"></script>
   <script src="/app.js?v=__APP_VERSION__"></script>
