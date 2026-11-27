@@ -588,3 +588,24 @@ html.dark .page.bg-ruled { background-image: repeating-linear-gradient(to bottom
 .busy-note { }
 .note-body .line.t-table > .body-table, .note-body .line.t-audio > .body-audio { flex: 1; min-width: 0; }
 .body-table tr > .cell:nth-last-child(2) { width: 100%; }
+
+/* list menu: solid background, normal-size options (not the round color buttons) */
+#list-pop { background: #fff; box-shadow: 0 6px 24px rgba(0,0,0,.22); border: 1px solid rgba(0,0,0,.08); }
+html.dark #list-pop { background: #2c2b27; border-color: rgba(255,255,255,.12); }
+#list-pop button { width: auto; height: auto; border-radius: 8px; border: 0; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* make the list button match the other big icon buttons */
+.list-menu-btn { padding: 3px 6px; }
+.list-menu-btn svg { width: 26px; height: 26px; }
+/* bigger text formatting buttons on phones and tablets */
+@media (pointer: coarse) {
+  .format-tools { gap: 4px; }
+  .format-tools select { font-size: 16px; padding: 7px 8px; min-height: 40px; }
+  .format-tools .fmt { min-width: 42px; min-height: 40px; font-size: 20px; padding: 6px 9px; justify-content: center; }
+  .fmt-hl-icon { font-size: 17px; }
+  .fmt-bar { width: 22px; height: 4px; }
+}
+@media (pointer: coarse) and (max-width: 600px) {
+  .format-tools { gap: 2px; }
+  .format-tools select { max-width: 122px; }
+  .format-tools .fmt { min-width: 40px; padding: 6px 7px; }
+}

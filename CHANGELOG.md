@@ -2,6 +2,11 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.29.1
+- Move-left and indent buttons are now the same size as undo, redo and lists (icon-only).
+- The list menu has a solid background and full-size options.
+- Bigger text formatting buttons (font, B, I, U, S, color, highlight) on phones and tablets; the font picker label is shorter so they fit on one row.
+
 ## 0.29.0 (Android app 1.1.0)
 - **Reminders:** ⋯ → ⏰ Reminder… (quick picks or any date and time). The Android app shows a phone notification at that time, even when closed; in a browser it pops up while the app is open. Reminders show on the note and its card, and in a ⏰ Reminders list in the folder menu.
 - **Tags:** type #words in a note (e.g. #car, #receipts). Tags appear under **Tags** in the folder menu; tap a tag in a note for "Show notes tagged…".
