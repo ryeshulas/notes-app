@@ -2,6 +2,9 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.27.0
+- A note's folder picker has **＋ New folder…** at the bottom: name it and the note moves straight into the new folder. (If a folder with that name already exists, the note goes there instead of making a duplicate.)
+
 ## 0.26.1
 - The pin button is icon-only: a pin when the note isn't pinned, a highlighted crossed-out pin when it is. No pop-up message.
 - The folder picker is back in the note header on phones.

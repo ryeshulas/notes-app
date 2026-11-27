@@ -334,6 +334,7 @@ $('#logout').addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------- sidebar & list
+const NEW_FOLDER = '__new__';   // the "+ New folder…" choice in a note's folder picker
 function renderSidebar() {
   const nav = $('#folders');
   nav.textContent = '';
@@ -373,7 +374,8 @@ function renderSidebar() {
   sel.textContent = '';
   sel.append(new Option('Unfiled', ''));
   folders().forEach((f) => sel.append(new Option(f.data.name, f.id)));
-  sel.value = cur;
+  sel.append(new Option('＋ New folder…', NEW_FOLDER));
+  sel.value = cur === NEW_FOLDER ? '' : cur;
 }
 
 $('#add-folder').addEventListener('click', async () => {
@@ -1858,7 +1860,23 @@ for (const [sel, fn] of [['#text-undo', () => body.undo()], ['#text-redo', () =>
 $('#clear-done').addEventListener('pointerdown', (e) => e.preventDefault());
 $('#clear-done').addEventListener('click', () => body.clearDone());
 $('#note-title').addEventListener('input', () => editor.queueSave());
-$('#note-folder').addEventListener('change', () => editor.queueSave(0));
+// Picking "+ New folder…" asks for a name, makes the folder and files the note in it.
+let noteFolderBefore = '';
+$('#note-folder').addEventListener('focus', () => { noteFolderBefore = $('#note-folder').value; });
+$('#note-folder').addEventListener('pointerdown', () => { noteFolderBefore = $('#note-folder').value; });
+$('#note-folder').addEventListener('change', async () => {
+  const sel = $('#note-folder');
+  if (sel.value !== NEW_FOLDER) { noteFolderBefore = sel.value; editor.queueSave(0); return; }
+  const name = (prompt('New folder name') || '').trim();
+  if (!name) { sel.value = noteFolderBefore; return; }
+  const existing = folders().find((f) => f.data.name.trim().toLowerCase() === name.toLowerCase());
+  const id = existing ? existing.id : uuid();
+  if (!existing) await save('folder', id, { name });
+  renderSidebar();
+  sel.value = id;
+  noteFolderBefore = id;
+  editor.queueSave(0);
+});
 $('#note-pin').addEventListener('click', () => {
   const n = getNote(state.openId);
   n.data = { ...n.data, pinned: !n.data.pinned };
