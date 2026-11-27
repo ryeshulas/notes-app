@@ -2,6 +2,9 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.20.0
+- Tap below a drawing, shape or picture to start typing there. Works whether you drew first or typed first, and again after each drawing. (Tapping where there's nothing drawn between the text and your tap just continues the text.)
+
 ## 0.19.0
 - Text and drawing now share one page, like Samsung Notes: write or draw right over and around your typed text.
 - The page has a fixed width and scales to the screen, so handwriting stays lined up with the text on the phone, tablet and laptop (text is larger on bigger screens, up to a limit).

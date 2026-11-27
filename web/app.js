@@ -1382,10 +1382,36 @@ $('#page').addEventListener('pointerdown', (e) => {
   setMode('write');
   ink.down(e);
 }, { capture: true });
-// In Type mode, tapping below the text puts the cursor at the end.
+// In Type mode, tapping below the text starts typing there. If there's a drawing, shape or
+// picture between the end of the text and the tap, the new text starts below it (at the tap).
 $('#page').addEventListener('click', (e) => {
-  if (state.mode === 'type' && (e.target.id === 'page' || e.target.id === 'note-body' || e.target.closest('#ink-wrap'))) body.focusEnd();
+  if (state.mode === 'type' && (e.target.id === 'page' || e.target.id === 'note-body' || e.target.closest('#ink-wrap'))) typeBelow(e.clientY);
 });
+// Lowest point (screen px) of anything drawn that starts above screen position y, or null.
+function drawingBottomAbove(y) {
+  const top = ink.canvas.getBoundingClientRect().top, s = ink.scale();
+  const limit = (y - top) / s;
+  let low = -1;
+  for (const st of ink.strokes) {
+    let mn = Infinity, mx = -Infinity;
+    for (let i = 1; i < st.p.length; i += 3) { mn = Math.min(mn, st.p[i]); mx = Math.max(mx, st.p[i]); }
+    if (mn < limit) low = Math.max(low, mx + (st.w || 3) / 2);
+  }
+  for (const [t, b] of canvasItems.spans()) if (t < limit) low = Math.max(low, b);
+  return low < 0 ? null : top + low * s;
+}
+function typeBelow(y) {
+  const nb = $('#note-body');
+  const textEnd = body.contentBottom() ?? (nb.getBoundingClientRect().top + parseFloat(getComputedStyle(nb).paddingTop));
+  const drawn = drawingBottomAbove(y);
+  // Only add space when something drawn sits below the text; otherwise just continue the text.
+  if (y <= textEnd || drawn === null || drawn <= textEnd) { body.focusEnd(); return; }
+  const lineH = parseFloat(getComputedStyle(nb).fontSize) * 1.45;
+  // Start on the line row containing the tap, but never above the bottom of the drawing.
+  let row = Math.floor((y - textEnd) / lineH);
+  while (textEnd + row * lineH < drawn - lineH * 0.25) row++;
+  body.blankLinesAtEnd(row + 1);
+}
 // In Write mode with an S Pen, a finger tap on the text switches to typing at that spot.
 function tapToType(x, y) {
   setMode('type');
@@ -1394,7 +1420,7 @@ function tapToType(x, y) {
     if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(x, y); if (p) { node = p.offsetNode; offset = p.offset; } }
     else if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); if (r) { node = r.startContainer; offset = r.startOffset; } }
     const txt = node && (node.nodeType === 1 ? node : node.parentElement)?.closest?.('#note-body .txt');
-    if (!txt) { body.focusEnd(); return; }
+    if (!txt) { typeBelow(y); return; }
     txt.focus();
     const r = document.createRange();
     r.setStart(node, offset);

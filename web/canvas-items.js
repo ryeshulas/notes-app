@@ -395,6 +395,12 @@ const CanvasItems = (() => {
       },
       // move everything down (used when an older note is converted to the combined page)
       shiftAll(dy) { items.forEach((it) => { it.y += dy; }); render(); },
+      // [top, bottom] of every item, in page units
+      spans() {
+        return items.map((it) => it.k === 'shape'
+          ? [Math.min(it.y, it.y + it.h), Math.max(it.y, it.y + it.h)]
+          : [it.y, it.y + (it.h || (it.size || 28) * 1.5)]);
+      },
       lowestPoint() {
         return items.reduce((m, it) => Math.max(m, it.k === 'shape' ? Math.max(it.y, it.y + it.h) : it.y + (it.h || (it.size || 28) * 1.5)), 0);
       },

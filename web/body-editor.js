@@ -650,6 +650,24 @@ const BodyEditor = (() => {
       imageCount() { return blocks.filter((b) => b.t === 'img').length; },
       focused() { return root.contains(document.activeElement); },
       focusEnd() { const j = textLine(blocks.length - 1, -1); if (j >= 0) focusLine(j, 'end'); },
+      // Screen position of the bottom of the last line that has something in it (null if the note is empty).
+      contentBottom() {
+        readAll();
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          const b = blocks[i];
+          if (b.t === 'p' && !b.s) continue;
+          return root.children[i]?.getBoundingClientRect().bottom ?? null;
+        }
+        return null;
+      },
+      // Make the note end with exactly n empty lines after the last real content and put the cursor on the last one.
+      blankLinesAtEnd(n) {
+        readAll();
+        while (blocks.length > 1 && blocks[blocks.length - 1].t === 'p' && !blocks[blocks.length - 1].s) blocks.pop();
+        const onlyEmpty = blocks.length === 1 && blocks[0].t === 'p' && !blocks[0].s;
+        for (let k = onlyEmpty ? 1 : 0; k < n; k++) blocks.push(clean({ t: 'p', s: '' }));
+        structural(blocks.length - 1, 0);
+      },
       // Insert a picture after the line being edited, with a text line after it to keep typing.
       insertImage(file) {
         readAll();
