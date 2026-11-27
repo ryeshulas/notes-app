@@ -9,6 +9,11 @@ const NOTE_COLORS_DARK = {
   yellow: '#3f3a22', green: '#24402c', blue: '#1f3552', pink: '#4a2634',
   purple: '#382c52', orange: '#4a3420', gray: '#353533', white: '#2a2926',
 };
+// Strong versions of the note colours, used for the colour buttons in dark mode.
+const NOTE_COLORS_STRONG = {
+  yellow: '#f2c94c', green: '#5fbf6a', blue: '#5b9bea', pink: '#ec7aa4',
+  purple: '#a283e8', orange: '#f19a4b', gray: '#a3a3a3', white: '#ffffff',
+};
 const isDark = () => document.documentElement.classList.contains('dark');
 const noteColor = (name) => (isDark() ? NOTE_COLORS_DARK : NOTE_COLORS)[name] || (isDark() ? NOTE_COLORS_DARK : NOTE_COLORS).yellow;
 // Black ink, lines and text are shown light in dark mode (they're stored as black).
@@ -258,6 +263,7 @@ async function sync() {
       state.syncing = false;
       state.pending = (await idb.all('outbox')).length;
       renderSyncStatus();
+      scheduleInkIndex();
     }
   };
   if (navigator.locks) await navigator.locks.request('notes-sync', run); else await run();
@@ -350,7 +356,9 @@ function renderSidebar() {
     const b = document.createElement('button');
     b.className = 'folder' + (state.view === it.id ? ' active' : '');
     const name = document.createElement('span');
-    name.textContent = (it.folder ? '📁 ' : '') + it.name;
+    name.className = 'folder-name';
+    if (it.folder) name.append(folderIcon(it.id));
+    name.append(it.name);
     const right = document.createElement('span');
     const c = document.createElement('span');
     c.className = 'count';
@@ -360,8 +368,8 @@ function renderSidebar() {
       const more = document.createElement('span');
       more.className = 'more';
       more.textContent = '⋯';
-      more.title = 'Rename or delete';
-      more.addEventListener('click', (e) => { e.stopPropagation(); editFolder(it.id); });
+      more.title = 'Rename, color or delete';
+      more.addEventListener('click', (e) => { e.stopPropagation(); folderMenu(it.id, more); });
       right.append(more);
     }
     b.append(name, right);
@@ -387,6 +395,73 @@ $('#add-folder').addEventListener('click', async () => {
   renderSidebar(); renderList();
 });
 
+// ---- folder colors ----
+const FOLDER_COLORS = {
+  amber: '#e0a526', red: '#e0524b', orange: '#ee8a3a', green: '#4caf50', teal: '#26a69a',
+  blue: '#3d8be0', purple: '#9c6ade', pink: '#e86a9e', brown: '#9b7653', gray: '#8f8f8f',
+};
+const folderColor = (id) => FOLDER_COLORS[state.records.get(keyOf('folder', id))?.data.color] || FOLDER_COLORS.amber;
+function folderIcon(id) {
+  const s = document.createElement('span');
+  s.className = 'folder-icon';
+  s.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 014.5 5h4.6l2 2.2h8.4A1.5 1.5 0 0121 8.7v9.8a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18.5z" fill="currentColor"/></svg>';
+  s.style.color = folderColor(id);
+  return s;
+}
+// The ⋯ menu on a folder: rename, pick a color, delete.
+function folderMenu(id, anchor) {
+  const f = state.records.get(keyOf('folder', id));
+  if (!f) return;
+  const m = $('#ctx-menu');
+  m.textContent = '';
+  const title = document.createElement('div');
+  title.className = 'menu-title';
+  title.textContent = f.data.name;
+  const row = document.createElement('div');
+  row.className = 'menu-colors';
+  for (const [name, hex] of Object.entries(FOLDER_COLORS)) {
+    const b = document.createElement('button');
+    b.className = 'folder-swatch' + ((f.data.color || 'amber') === name ? ' active' : '');
+    b.style.background = hex;
+    b.title = name;
+    b.setAttribute('aria-label', `Color: ${name}`);
+    b.addEventListener('click', async () => {
+      m.classList.add('hidden');
+      await save('folder', id, { ...f.data, color: name });
+      renderSidebar(); renderList();
+    });
+    row.append(b);
+  }
+  const btn = (label, fn, cls) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (cls) b.className = cls;
+    b.addEventListener('click', () => { m.classList.add('hidden'); fn(); });
+    return b;
+  };
+  m.append(title, row,
+    btn('✏️ Rename', () => renameFolder(id)),
+    btn('🗑 Delete folder', () => deleteFolder(id), 'danger'));
+  m.classList.remove('hidden');
+  const r = anchor.getBoundingClientRect(), mr = m.getBoundingClientRect();
+  m.style.left = `${Math.max(6, Math.min(r.left, innerWidth - mr.width - 6))}px`;
+  m.style.top = `${Math.max(6, Math.min(r.bottom + 4, innerHeight - mr.height - 6))}px`;
+}
+async function renameFolder(id) {
+  const f = state.records.get(keyOf('folder', id));
+  const name = prompt('Folder name', f.data.name);
+  if (!name || !name.trim()) return;
+  await save('folder', id, { ...f.data, name: name.trim() });
+  renderSidebar(); renderList();
+}
+async function deleteFolder(id) {
+  const f = state.records.get(keyOf('folder', id));
+  if (!confirm(`Delete folder "${f.data.name}"? Its notes move to Unfiled.`)) return;
+  for (const n of notes().filter((n) => n.data.folder === id)) await save('note', n.id, { ...n.data, folder: null }, n.deleted);
+  await save('folder', id, f.data, true);
+  if (state.view === id) state.view = 'all';
+  renderSidebar(); renderList();
+}
 async function editFolder(id) {
   const f = state.records.get(keyOf('folder', id));
   const name = prompt('Rename folder (clear the name to delete the folder):', f.data.name);
@@ -436,7 +511,7 @@ function visibleNotes() {
       if (state.view === 'inbox' && n.data.folder && folderIds.has(n.data.folder)) return false;
       if (state.view !== 'all' && state.view !== 'inbox' && n.data.folder !== state.view) return false;
     }
-    if (match && !match(`${n.data.title || ''}\n${n.data.text || ''}`)) return false;
+    if (match && !match(`${n.data.title || ''}\n${n.data.text || ''}\n${inkText(n.id)}`)) return false;
     return true;
   }).sort((a, b) => (Number(!!b.data.pinned) - Number(!!a.data.pinned)) || compareNotes(a, b));
 }
@@ -489,6 +564,13 @@ function renderList() {
     h.textContent = n.data.title || (n.data.text ? n.data.text.split('\n')[0].slice(0, 60) : strokes.length ? 'Drawing' : 'Untitled');
     if (!n.data.title) h.classList.add('untitled');
     const m = document.createElement('div'); m.className = 'meta'; m.textContent = noteDate(n.updated_at);
+    const nf = n.data.folder && state.records.get(keyOf('folder', n.data.folder));
+    let chip = null;
+    if (nf && !nf.deleted && state.view !== n.data.folder) {
+      chip = document.createElement('span');
+      chip.className = 'folder-chip';
+      chip.append(folderIcon(n.data.folder), nf.data.name);
+    }
     const todos = (n.data.blocks || []).filter((b) => b.t === 'todo');
     if (todos.length) m.textContent += ` · ${todos.filter((b) => b.d).length}/${todos.length} done`;
     const canvasItems = n.data.ink?.items || [];
@@ -500,6 +582,7 @@ function renderList() {
     const preview = n.data.title ? plain : plain.split('\n').slice(1).join('\n').trim();
     if (preview) { const p = document.createElement('p'); p.textContent = preview; card.append(p); }
     if (strokes.length || canvasItems.length) card.append(thumbnail(strokes, canvasItems));
+    if (chip) card.append(chip);
     attachCardSelect(card, n);
     if (state.view === 'trash' && !state.selecting) {
       const row = document.createElement('div'); row.className = 'restore';
@@ -645,7 +728,8 @@ $('#sel-move').addEventListener('change', async (e) => {
 (function buildSelColors() {
   for (const [name, hex] of Object.entries(NOTE_COLORS)) {
     const b = document.createElement('button');
-    b.style.background = hex;
+    b.style.setProperty('--sw-light', hex);
+    b.style.setProperty('--sw-dark', NOTE_COLORS_STRONG[name]);
     b.title = `Make ${name}`;
     b.addEventListener('click', async () => {
       if (!state.picked.size) return;
@@ -1844,10 +1928,29 @@ const editor = {
 };
 ink.onChange = () => editor.queueSave(600);
 
-// List buttons. pointerdown + preventDefault keeps the keyboard open on phones.
-document.querySelectorAll('.text-tools [data-line]').forEach((b) => {
+// List type drop-down. pointerdown + preventDefault keeps the keyboard open on phones.
+$('#list-menu-btn').addEventListener('pointerdown', (e) => e.preventDefault());
+$('#list-menu-btn').addEventListener('click', () => {
+  const pop = $('#list-pop');
+  if (!pop.classList.contains('hidden')) { pop.classList.add('hidden'); return; }
+  const cur = body.currentType ? body.currentType() : null;
+  pop.querySelectorAll('[data-line]').forEach((b) => b.classList.toggle('on', b.dataset.line === cur));
+  pop.classList.remove('hidden');
+  const r = $('#list-menu-btn').getBoundingClientRect(), pr = pop.getBoundingClientRect();
+  pop.style.left = `${Math.max(6, Math.min(r.left, innerWidth - pr.width - 6))}px`;
+  pop.style.top = `${r.bottom + 4}px`;
+});
+document.querySelectorAll('#list-pop [data-line]').forEach((b) => {
   b.addEventListener('pointerdown', (e) => e.preventDefault());
-  b.addEventListener('click', () => body.setType(b.dataset.line));
+  b.addEventListener('click', () => {
+    $('#list-pop').classList.add('hidden');
+    const cur = body.currentType ? body.currentType() : null;
+    if (b.dataset.line === 'p') { if (cur && cur !== 'p') body.setType(cur); }   // choosing the current type again turns it off
+    else if (b.dataset.line !== cur) body.setType(b.dataset.line);
+  });
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('#list-pop, #list-menu-btn')) $('#list-pop').classList.add('hidden');
 });
 for (const [sel, fn] of [['#line-indent', () => body.indent()], ['#line-outdent', () => body.outdent()]]) {
   $(sel).addEventListener('pointerdown', (e) => e.preventDefault());
@@ -1899,7 +2002,8 @@ function showPinButton(pinned) {
     const b = document.createElement('button');
     b.className = 'swatch';
     b.dataset.color = name;
-    b.style.background = hex;
+    b.style.setProperty('--sw-light', hex);
+    b.style.setProperty('--sw-dark', NOTE_COLORS_STRONG[name]);
     b.title = name;
     b.addEventListener('click', () => {
       const n = getNote(state.openId);
@@ -2351,6 +2455,69 @@ window.androidBack = () => {
   return false;
 };
 
+// ---- search for handwriting ----
+// The Android app reads the handwriting in each note in the background (on the device, with ML Kit) and
+// saves the words as a separate "inktext" record, so every device can search them. The note itself isn't
+// touched, so its date and sort order don't change.
+function inkText(noteId) { const r = state.records.get(keyOf('inktext', noteId)); return r && !r.deleted ? r.data.text || '' : ''; }
+function inkSignature(strokes) {
+  let pts = 0;
+  for (const st of strokes) pts += st.p.length;
+  return `${strokes.length}:${pts}`;
+}
+const inkIndex = { running: false, timer: null, failedUntil: 0 };
+function scheduleInkIndex(ms = 8000) {
+  if (!android) return;
+  clearTimeout(inkIndex.timer);
+  inkIndex.timer = setTimeout(runInkIndex, ms);
+}
+function notesNeedingInkText() {
+  return notes().filter((n) => {
+    if (n.deleted) return false;
+    const strokes = (n.data.ink?.strokes || []).filter((st) => st.t !== 'highlighter');
+    const have = state.records.get(keyOf('inktext', n.id));
+    if (!strokes.length) return !!(have && !have.deleted && have.data.text);   // handwriting was erased: clear it
+    return !have || have.deleted || have.data.sig !== inkSignature(strokes);
+  }).sort((a, b) => b.updated_at - a.updated_at);
+}
+async function runInkIndex() {
+  if (!android || inkIndex.running || !state.token || Date.now() < inkIndex.failedUntil) return;
+  inkIndex.running = true;
+  try {
+    for (;;) {
+      // Leave the note being written in alone until it has been still for a while.
+      const todo = notesNeedingInkText().filter((n) => n.id !== state.openId || Date.now() - n.updated_at > 20000);
+      showInkIndexStatus(todo.length);
+      if (!todo.length) break;
+      const n = todo[0];
+      const strokes = (n.data.ink?.strokes || []).filter((st) => st.t !== 'highlighter').slice(0, 4000);
+      if (!strokes.length) { await save('inktext', n.id, { text: '', sig: '' }); continue; }
+      const lines = strokeLines(strokes).map((l) => l.items.map((b) => { const f = []; for (let i = 0; i < b.st.p.length; i += 3) f.push(b.st.p[i], b.st.p[i + 1]); return f; }));
+      const res = await new Promise((resolve) => {
+        const id = `index-${n.id}`;
+        const t = setTimeout(() => { androidHandlers.delete(id); resolve({ error: 'timed out' }); }, 120000);
+        androidHandlers.set(id, (r) => {
+          if (r.status) { showInkIndexStatus(todo.length, r.status); return; }
+          clearTimeout(t); androidHandlers.delete(id); resolve(r);
+        });
+        android.recognize(JSON.stringify(lines), id);
+      });
+      if (res.error) { inkIndex.failedUntil = Date.now() + 10 * 60 * 1000; showInkIndexStatus(0); break; }
+      const text = (res.lines || []).map((l) => l.text).filter(Boolean).join('\n');
+      await save('inktext', n.id, { text, sig: inkSignature(strokes) });
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  } finally {
+    inkIndex.running = false;
+  }
+}
+function showInkIndexStatus(left, status) {
+  const el = $('#ink-index-status');
+  if (!el) return;
+  el.textContent = status === 'downloading' ? 'Downloading the handwriting reader (one time)…'
+    : left > 3 ? `Reading handwriting for search: ${left} notes left` : '';
+}
+
 // ---- handwriting to text (Android app: Google ML Kit on the device) ----
 // Group the selected strokes into lines of writing, top to bottom; keep writing order within a line.
 function strokeLines(strokes) {
@@ -2382,10 +2549,13 @@ $('#lasso-text').addEventListener('click', () => {
   $('#convert-alts').textContent = '';
   $('#convert-pop').classList.remove('hidden');
   const payload = lines.map((l) => l.items.map((b) => { const f = []; for (let i = 0; i < b.st.p.length; i += 3) f.push(b.st.p[i], b.st.p[i + 1]); return f; }));
-  android.recognize(JSON.stringify(payload), id);
+  android.recognize(JSON.stringify(payload), 'convert');
 });
-window.__androidCb = (id, res) => {
-  if (!convertJob || convertJob.id !== id) return;
+// Answers from the app arrive here and go to whoever asked.
+const androidHandlers = new Map();
+window.__androidCb = (id, res) => { androidHandlers.get(id)?.(res); };
+androidHandlers.set('convert', (res) => {
+  if (!convertJob) return;
   if (res.status === 'downloading') { $('#convert-status').textContent = 'Downloading the handwriting model (one time, about 20 MB)…'; return; }
   if (res.error) { $('#convert-status').textContent = res.error; return; }
   const lines = res.lines || [];
@@ -2401,7 +2571,7 @@ window.__androidCb = (id, res) => {
       alts.append(b);
     }
   }
-};
+});
 function removeConverted() {
   const gone = new Set(convertJob.sel);
   ink.pushUndo();

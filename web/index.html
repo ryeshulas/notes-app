@@ -43,6 +43,7 @@
       <div class="data-tools app-only">
         <button id="app-server" class="link" title="Change the notes server address">⚙️ Server address</button>
         <button id="app-update" class="link" title="Look for a newer version of the Android app">⟳ Check for app update</button>
+        <div id="ink-index-status" class="ink-index-status"></div>
       </div>
       <div class="sidebar-foot">
         <select id="theme" class="theme-pick" title="Light or dark appearance">
@@ -142,11 +143,9 @@
           <button id="fmt-hl" class="tool fmt" title="Highlight"><span class="fmt-hl-icon">ab</span><span id="fmt-hl-bar" class="fmt-bar" style="background:#fff176"></span></button>
         </div>
         <div class="text-tools">
-          <button id="text-undo" class="tool" title="Undo (Ctrl+Z)">↶</button>
-          <button id="text-redo" class="tool" title="Redo (Ctrl+Y)">↷</button>
-          <button data-line="ul" class="tool" title="Bulleted list">• List</button>
-          <button data-line="ol" class="tool" title="Numbered list">1. List</button>
-          <button data-line="todo" class="tool" title="Checklist">☑ Checklist</button>
+          <button id="text-undo" class="tool big-icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg></button>
+          <button id="text-redo" class="tool big-icon" title="Redo (Ctrl+Y)" aria-label="Redo"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 9H9.5a5.5 5.5 0 000 11H13" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg></button>
+          <button id="list-menu-btn" class="tool list-menu-btn" title="Lists: bulleted, numbered or checklist" aria-haspopup="true" aria-label="List type"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="4.5" cy="6" r="1.8" fill="currentColor"/><circle cx="4.5" cy="12" r="1.8" fill="currentColor"/><circle cx="4.5" cy="18" r="1.8" fill="currentColor"/><path d="M9 6h11M9 12h11M9 18h11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span class="drop-tri">▾</span></button>
           <button id="line-outdent" class="tool" title="Move left (Shift+Tab)">⇤</button>
           <button id="line-indent" class="tool" title="Indent / make sub-item (Tab)">⇥</button>
           <button id="clear-done" class="tool" title="Remove checked items">Clear checked</button>
@@ -170,7 +169,7 @@
           <select id="ink-width" title="Pen and eraser size">
             <option value="2">Fine</option><option value="4" selected>Medium</option><option value="8">Bold</option>
           </select>
-          <button id="ink-undo" class="tool" title="Undo">↶</button>
+          <button id="ink-undo" class="tool big-icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg></button>
           <button id="ink-more" class="tool" title="Add more drawing space">＋ space</button>
           <span class="sep"></span>
           <button id="zoom-out" class="tool" title="Zoom out">−</button>
@@ -210,6 +209,12 @@
           <div id="item-bar" class="item-bar hidden"></div>
                 </div>
         <div id="fmt-pop" class="fmt-pop hidden"></div>
+    <div id="list-pop" class="fmt-pop list-pop hidden" role="menu">
+      <button data-line="ul" role="menuitem"><span class="li-ic">•</span> Bulleted list</button>
+      <button data-line="ol" role="menuitem"><span class="li-ic">1.</span> Numbered list</button>
+      <button data-line="todo" role="menuitem"><span class="li-ic">☑</span> Checklist</button>
+      <button data-line="p" role="menuitem"><span class="li-ic">¶</span> Plain text</button>
+    </div>
         <div id="page" class="page">
           <div id="note-body" class="note-body"></div>
           <div id="ink-wrap"><canvas id="ink"></canvas><div id="ink-items" class="ink-items"></div></div>

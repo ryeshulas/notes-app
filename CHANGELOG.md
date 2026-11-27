@@ -2,6 +2,14 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.28.0
+- **Search handwriting:** the Android app reads the handwriting in your notes in the background (on the device) and saves the words for search, on every device. Progress shows in the folder menu the first time. The note itself isn't changed, so its date and order stay the same.
+- **Web links** in typed text are underlined links. Put the cursor in one (tap it) and an **↗ Open** button appears; on the laptop Ctrl+click opens it directly.
+- **Lists** are now one drop-down (bulleted-list icon with ▾): Bulleted list, Numbered list, Checklist, Plain text.
+- Bigger, icon-only **undo / redo** buttons.
+- **Folder colors:** a folder's ⋯ menu has a row of colors plus Rename and Delete. The folder icon shows its color in the menu, and notes in All notes / search show a small colored folder tag.
+- Dark mode: the note color buttons use strong colors so they're easy to tell apart.
+
 ## 0.27.0
 - A note's folder picker has **＋ New folder…** at the bottom: name it and the note moves straight into the new folder. (If a folder with that name already exists, the note goes there instead of making a duplicate.)
 

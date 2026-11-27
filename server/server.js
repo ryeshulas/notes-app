@@ -14,7 +14,8 @@ const WEB_DIR = process.env.WEB_DIR || path.join(__dirname, '..', 'web');
 const PASSWORD = process.env.NOTES_PASSWORD || '';
 const MAX_BODY = 25 * 1024 * 1024; // ink-heavy syncs can be large
 const PAGE_SIZE = 500;
-const KINDS = new Set(['note', 'folder']);
+// inktext: text read from a note's handwriting (by the Android app), used for search
+const KINDS = new Set(['note', 'folder', 'inktext']);
 const APP_VERSION = (() => {
   try { return fs.readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf8').trim(); } catch { return 'dev'; }
 })();

@@ -209,6 +209,38 @@ const BodyEditor = (() => {
     el.childNodes.forEach((c) => walk(c, {}));
     return normRuns(out);
   }
+  // ---- web links: text that looks like a web address is shown as a link ----
+  const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+  function hrefOf(text) { return /^www\./i.test(text) ? `https://${text}` : text; }
+  function linkify(el) {
+    el.querySelectorAll('a.lnk').forEach((a) => a.replaceWith(...a.childNodes));
+    el.normalize();
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const text = node.data;
+      URL_RE.lastIndex = 0;
+      let m, last = 0;
+      const parts = [];
+      while ((m = URL_RE.exec(text))) {
+        let url = m[0].replace(/[.,;:!?)\]]+$/, '');   // leave trailing punctuation out of the link
+        if (url.length < 5) continue;
+        parts.push(text.slice(last, m.index));
+        const a = document.createElement('a');
+        a.className = 'lnk';
+        a.href = hrefOf(url);
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = url;
+        parts.push(a);
+        last = m.index + url.length;
+      }
+      if (!parts.length) continue;
+      parts.push(text.slice(last));
+      node.replaceWith(...parts.filter((p) => p !== ''));
+    }
+  }
   function renderRuns(el, runs) {
     el.textContent = '';
     for (const r of runs) {
@@ -286,6 +318,7 @@ const BodyEditor = (() => {
         txt.contentEditable = 'true';
         txt.spellcheck = true;
         renderRuns(txt, runsOf(b));
+        linkify(txt);
         if (blocks.length === 1 && b.t === 'p') txt.dataset.placeholder = placeholder;
         line.append(marker, txt);
         root.append(line);
@@ -498,6 +531,43 @@ const BodyEditor = (() => {
       return styleAt(runs, s.a.off + 1);
     }
 
+    root.addEventListener('focusout', (e) => {
+      const el = e.target.closest?.('.txt');
+      if (el && !el.querySelector('.lnk') && !URL_RE.test(el.textContent)) { URL_RE.lastIndex = 0; return; }
+      URL_RE.lastIndex = 0;
+      if (el) linkify(el);
+    });
+    root.addEventListener('click', (e) => {
+      const a = e.target.closest?.('a.lnk');
+      if (!a) return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) window.open(a.href, '_blank', 'noopener');
+    });
+    // A small "Open link" button appears when the cursor is in a link.
+    const linkTip = document.createElement('a');
+    linkTip.className = 'link-tip hidden';
+    linkTip.target = '_blank';
+    linkTip.rel = 'noopener';
+    linkTip.addEventListener('pointerdown', (e) => e.preventDefault());
+    linkTip.addEventListener('click', () => linkTip.classList.add('hidden'));
+    document.body.append(linkTip);
+    const hideTip = () => linkTip.classList.add('hidden');
+    document.addEventListener('selectionchange', () => {
+      const sel = getSelection();
+      const n = sel.rangeCount ? sel.anchorNode : null;
+      const a = n && (n.nodeType === 1 ? n : n.parentElement)?.closest?.('a.lnk');
+      if (!a || !root.contains(a)) { hideTip(); return; }
+      linkTip.href = a.href;
+      let host = a.href;
+      try { host = new URL(a.href).hostname; } catch { /* keep the full address */ }
+      linkTip.textContent = `↗ Open ${host}`;
+      linkTip.classList.remove('hidden');
+      const r = a.getBoundingClientRect();
+      const w = linkTip.offsetWidth;
+      linkTip.style.left = `${Math.max(6, Math.min(r.left, innerWidth - w - 6))}px`;
+      linkTip.style.top = `${r.bottom + 6 + w * 0}px`;
+    });
+    root.closest('#editor-scroll')?.addEventListener('scroll', hideTip);
     document.addEventListener('selectionchange', () => {
       const s = liveSelection();
       if (s) { lastSel = s; lastIndex = s.f.line; onSelectionStyle && onSelectionStyle(currentStyle()); }
@@ -528,6 +598,7 @@ const BodyEditor = (() => {
           const pos = s.a.off;
           readLine(s.a.line);
           renderRuns(el, runsOf(blocks[s.a.line]));
+          linkify(el);
           const p = locate(el, pos);
           const rr = document.createRange();
           rr.setStart(p.node, p.offset);
@@ -788,6 +859,7 @@ const BodyEditor = (() => {
         structural(next, 0);
       },
       current() { return Math.min(lastIndex, blocks.length - 1); },
+      currentType() { const i = this.current(); return blocks[i] ? blocks[i].t : 'p'; },
       setType(type) {
         const i = this.current();
         readLine(i);
