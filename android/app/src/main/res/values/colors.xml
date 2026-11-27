@@ -1,0 +1,7 @@
+<resources>
+    <color name="paper">#F5F3EE</color>
+    <color name="accent">#D99A00</color>
+    <color name="icon_bg">#F5C84C</color>
+    <color name="widget_bg">#FFF8DC</color>
+    <color name="widget_text">#2B2A26</color>
+</resources>

@@ -1,0 +1,71 @@
+name: Build Android app
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Read version
+        run: echo "APP_VERSION=$(cat android/VERSION)" >> "$GITHUB_ENV"
+
+      # The signing key lives in two repository secrets. Without them the build still runs
+      # (to check the code compiles) but no release is published.
+      - name: Signing key
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS" ] && [ -n "$PW" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/notes.jks"
+            echo "NOTES_KEYSTORE=$RUNNER_TEMP/notes.jks" >> "$GITHUB_ENV"
+            echo "SIGNED=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASSWORD secrets are not set - building a test APK only, no release."
+          fi
+
+      - name: Build APK
+        working-directory: android
+        env:
+          NOTES_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          gradle --no-daemon assembleRelease
+          mkdir -p ../dist
+          cp app/build/outputs/apk/release/app-release.apk "../dist/notes-app-${APP_VERSION}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes-app-${{ env.APP_VERSION }}
+          path: dist/*.apk
+
+      - name: Publish release
+        if: env.SIGNED == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="android-v${APP_VERSION}"
+          FILE="dist/notes-app-${APP_VERSION}.apk"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+          else
+            gh release create "$TAG" "$FILE" --title "Android app ${APP_VERSION}" \
+              --notes "Install: open this page on the phone or tablet, tap the .apk file below, then Install. See the README for first-time steps."
+          fi
