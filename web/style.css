@@ -182,7 +182,14 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 .item.selected { outline: 2px dashed #d99a00; outline-offset: 2px; }
 .resize-handle { display: none; position: absolute; right: -14px; bottom: -14px; width: 28px; height: 28px; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.25);
   background: #fff; border: 2px solid #d99a00; cursor: nwse-resize; }
-.item-img.selected .resize-handle { display: block; }
+.item-img.selected .resize-handle, .item-shape.selected .resize-handle { display: block; }
+.item-shape svg { display: block; overflow: visible; }
+.ink-items.mode-text .item-shape { pointer-events: none !important; }
+.ink-items .item-shape { z-index: 0; }
+.pick-menu { position: fixed; z-index: 60; background: #fff; border-radius: 12px; padding: 6px; display: flex; flex-direction: column;
+  box-shadow: 0 8px 28px rgba(0,0,0,.22); min-width: 180px; }
+.pick-menu button { background: none; border: 0; text-align: left; padding: 10px 12px; border-radius: 8px; font-size: 15px; }
+.pick-menu button:hover { background: rgba(0,0,0,.05); }
 .item-bar { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; background: #fff; border-radius: 10px;
   padding: 4px 6px; margin-top: 4px; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
 .item-bar .bar-title { font-size: 12px; font-weight: 600; color: var(--muted); padding: 0 6px 0 2px; }
@@ -193,6 +200,16 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 .item-bar button.danger { margin-left: auto; }
 .item-bar button.danger:hover { background: #fde2e1; }
 .item-bar select { font-size: 13px; padding: 3px 4px; }
+.item-bar .bar-sub { font-size: 12px; color: var(--muted); padding: 0 4px 0 8px; }
+.item-bar .bar-hint { font-size: 11px; color: var(--muted); margin-left: auto; padding: 0 4px; }
+.item-bar button.dot.white { box-shadow: inset 0 0 0 1px #bbb; }
+.item-bar button.dot.white.on { box-shadow: 0 0 0 2px #333, inset 0 0 0 1px #bbb; }
+.item-bar button.dot.none, .fmt-pop button.none { background: #fff; position: relative; overflow: hidden; box-shadow: inset 0 0 0 1px #bbb; }
+.item-bar button.dot.none::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: #d32f2f; transform: rotate(45deg); }
+#shape-bar button[data-shape] { color: #2b2b2b; }
+#shape-bar button[data-shape].on { background: #ffe9a8; }
+#shape-fills { display: inline-flex; flex-wrap: wrap; }
+.fmt-pop button.white { box-shadow: inset 0 0 0 1px #bbb; }
 .item-bar .size-slider { width: 140px; accent-color: #d99a00; }
 .item-bar .size-pct { font-size: 12px; color: var(--muted); min-width: 34px; }
 

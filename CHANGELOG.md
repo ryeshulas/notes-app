@@ -2,6 +2,18 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.12.0
+- White added to the text colors and label colors.
+- Adding an image now offers **Take photo**, **Photos** or **Browse files**. Browse files opens the
+  device's file browser (Downloads, file shares, etc.). Take photo appears on phones and tablets.
+- The eraser now works like a pen: it removes only the ink under it (splitting lines as needed) and
+  leaves labels, images and shapes alone. Its size follows the Fine/Medium/Bold picker, and a circle
+  shows its size.
+- New **Shapes** tool: rectangle, ellipse, triangle, line and arrow. Drag to draw (a tap makes a
+  default-size shape). Outline only or filled with a color. The line uses the pen color and size.
+  Select a shape with the arrow tool to move or resize it, or change its line color, thickness and fill.
+- HEIC photos show a clear message (browsers can't open them).
+
 ## 0.11.0
 - The toolbar for a selected label or image now sits just under the drawing toolbar, so it never
   runs off the screen.

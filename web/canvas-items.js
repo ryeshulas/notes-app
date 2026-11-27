@@ -2,10 +2,63 @@
 // Items are stored with the ink in drawing units (the canvas is 1000 units wide):
 //   label: { id, k: 'text', x, y, s: 'text', size, st: { b, i, u, x, c, h, f } }
 //   image: { id, k: 'img', x, y, w, h, file }
+//   shape: { id, k: 'shape', shape: 'rect'|'ellipse'|'triangle'|'line'|'arrow', x, y, w, h, c: line color, fill, sw: line width }
+//          (x, y) is where the drag started and (x+w, y+h) where it ended; lines keep their direction.
 'use strict';
 
 const CanvasItems = (() => {
   const LABEL_SIZES = [18, 24, 32, 44, 60];
+  const LINE_COLORS = ['#1f1f1f', '#d32f2f', '#1e5bd8', '#2e7d32', '#e67700', '#8e24aa', '#ffffff'];
+  const FILL_COLORS = [null, '#ffffff', '#fff176', '#b9f6a8', '#a8dcff', '#ffc1d3', '#e0e0e0', '#1f1f1f', '#d32f2f', '#1e5bd8', '#2e7d32'];
+  const isBoxShape = (it) => it.k === 'shape' && !['line', 'arrow'].includes(it.shape);
+
+  // Shape geometry in drawing units, relative to an origin (ox, oy).
+  function shapeParts(it, ox = 0, oy = 0) {
+    const x = it.x - ox, y = it.y - oy, w = it.w, h = it.h;
+    const sw = it.sw || 4;
+    const parts = [];
+    if (it.shape === 'rect') parts.push({ type: 'rect', x: Math.min(x, x + w), y: Math.min(y, y + h), w: Math.abs(w), h: Math.abs(h) });
+    else if (it.shape === 'ellipse') parts.push({ type: 'ellipse', cx: x + w / 2, cy: y + h / 2, rx: Math.abs(w) / 2, ry: Math.abs(h) / 2 });
+    else if (it.shape === 'triangle') parts.push({ type: 'poly', pts: [[x + w / 2, y], [x + w, y + h], [x, y + h]] });
+    else {
+      parts.push({ type: 'line', x1: x, y1: y, x2: x + w, y2: y + h });
+      if (it.shape === 'arrow') {
+        const len = Math.max(14, sw * 4), a = Math.atan2(h, w), spread = 0.45;
+        const ex = x + w, ey = y + h;
+        parts.push({ type: 'head', pts: [[ex, ey], [ex - len * Math.cos(a - spread), ey - len * Math.sin(a - spread)], [ex - len * Math.cos(a + spread), ey - len * Math.sin(a + spread)]] });
+      }
+    }
+    return parts;
+  }
+  function shapeSVG(it, ox, oy) {
+    const sw = it.sw || 4, c = it.c || '#1f1f1f';
+    const fill = isBoxShape(it) && it.fill ? it.fill : 'none';
+    const common = `stroke="${c}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"`;
+    return shapeParts(it, ox, oy).map((p) => {
+      if (p.type === 'rect') return `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="2" fill="${fill}" ${common}/>`;
+      if (p.type === 'ellipse') return `<ellipse cx="${p.cx}" cy="${p.cy}" rx="${p.rx}" ry="${p.ry}" fill="${fill}" ${common}/>`;
+      if (p.type === 'poly') return `<polygon points="${p.pts.map((q) => q.join(',')).join(' ')}" fill="${fill}" ${common}/>`;
+      if (p.type === 'line') return `<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}" ${common}/>`;
+      return `<polygon points="${p.pts.map((q) => q.join(',')).join(' ')}" fill="${c}" ${common}/>`;
+    }).join('');
+  }
+  // Draw a shape onto a 2D canvas (note-card previews).
+  function drawShape(ctx, it) {
+    const sw = it.sw || 4, c = it.c || '#1f1f1f';
+    ctx.save();
+    ctx.lineWidth = sw; ctx.strokeStyle = c; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (const p of shapeParts(it)) {
+      ctx.beginPath();
+      if (p.type === 'rect') ctx.rect(p.x, p.y, p.w, p.h);
+      else if (p.type === 'ellipse') ctx.ellipse(p.cx, p.cy, Math.max(p.rx, 0.1), Math.max(p.ry, 0.1), 0, 0, Math.PI * 2);
+      else if (p.type === 'line') { ctx.moveTo(p.x1, p.y1); ctx.lineTo(p.x2, p.y2); }
+      else { p.pts.forEach(([a, b], i) => (i ? ctx.lineTo(a, b) : ctx.moveTo(a, b))); ctx.closePath(); }
+      if (p.type === 'head') { ctx.fillStyle = c; ctx.fill(); }
+      else if (isBoxShape(it) && it.fill) { ctx.fillStyle = it.fill; ctx.fill(); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   function create(layer, { scale, onChange, fileURL, onEditStart, barHost }) {
     let items = [];
@@ -28,6 +81,21 @@ const CanvasItems = (() => {
       if (it.k === 'img') {
         el.style.width = `${it.w * s}px`;
         el.style.height = `${it.h * s}px`;
+      } else if (it.k === 'shape') {
+        const pad = (it.sw || 4) + (it.shape === 'arrow' ? Math.max(14, (it.sw || 4) * 4) : 0) + 4;
+        const l = Math.min(it.x, it.x + it.w) - pad, t = Math.min(it.y, it.y + it.h) - pad;
+        const bw = Math.abs(it.w) + pad * 2, bh = Math.abs(it.h) + pad * 2;
+        el.style.left = `${l * s}px`;
+        el.style.top = `${t * s}px`;
+        el.style.width = `${bw * s}px`;
+        el.style.height = `${bh * s}px`;
+        const svg = el.querySelector('svg');
+        svg.setAttribute('viewBox', `0 0 ${bw} ${bh}`);
+        svg.innerHTML = shapeSVG(it, l, t);
+        // resize handle sits where the drag ended (bottom-right for boxes, the end point for lines)
+        const hd = el.querySelector('.resize-handle');
+        hd.style.left = `${(it.x + it.w - l) * s - 14}px`;
+        hd.style.top = `${(it.y + it.h - t) * s - 14}px`;
       } else {
         el.style.fontSize = `${(it.size || 24) * s}px`;
         el.style.maxWidth = `${1000 * s}px`;
@@ -40,7 +108,9 @@ const CanvasItems = (() => {
         el = document.createElement('div');
         el.className = `item item-${it.k}`;
         el.dataset.id = it.id;
-        if (it.k === 'img') {
+        if (it.k === 'shape') {
+          el.innerHTML = '<svg width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true"></svg><div class="resize-handle"></div>';
+        } else if (it.k === 'img') {
           const img = document.createElement('img');
           img.alt = '';
           img.draggable = false;
@@ -71,6 +141,20 @@ const CanvasItems = (() => {
       }
       el.classList.toggle('selected', selected === it.id);
       place(el, it);
+    }
+
+    // Boxes keep a positive size after dragging past their corner; nothing goes off the page.
+    function normalise(it) {
+      if (isBoxShape(it)) {
+        if (it.w < 0) { it.x += it.w; it.w = -it.w; }
+        if (it.h < 0) { it.y += it.h; it.h = -it.h; }
+        it.w = Math.max(8, it.w); it.h = Math.max(8, it.h);
+      }
+      const minX = Math.min(it.x, it.x + it.w), maxX = Math.max(it.x, it.x + it.w);
+      if (minX < 0) it.x -= minX;
+      if (maxX > 1000) it.x -= maxX - 1000;
+      const minY = Math.min(it.y, it.y + it.h);
+      if (minY < 0) it.y -= minY;
     }
 
     // Labels near the right edge slide left as they grow, instead of wrapping.
@@ -110,7 +194,7 @@ const CanvasItems = (() => {
       bar.textContent = '';
       const title = document.createElement('span');
       title.className = 'bar-title';
-      title.textContent = it.k === 'img' ? 'Image' : 'Label';
+      title.textContent = it.k === 'img' ? 'Image' : it.k === 'shape' ? 'Shape' : 'Label';
       bar.append(title);
       const btn = (label, title, fn, cls = '') => {
         const b = document.createElement('button');
@@ -136,11 +220,28 @@ const CanvasItems = (() => {
         for (const [k, html, title] of [['b', '<b>B</b>', 'Bold'], ['i', '<i>I</i>', 'Italic'], ['u', '<u>U</u>', 'Underline']]) {
           btn(html, title, () => { if (st[k]) delete st[k]; else st[k] = 1; renderItem(it); renderBar(); changed(); }, st[k] ? 'on' : '');
         }
-        for (const c of ['#1f1f1f', '#d32f2f', '#1e5bd8', '#2e7d32', '#e67700', '#8e24aa']) {
-          const b = btn('', 'Color', () => { st.c = c; renderItem(it); renderBar(); changed(); }, `dot${(st.c || '#1f1f1f') === c ? ' on' : ''}`);
+        for (const c of LINE_COLORS) {
+          const b = btn('', 'Color', () => { st.c = c; renderItem(it); renderBar(); changed(); }, `dot${(st.c || '#1f1f1f') === c ? ' on' : ''}${c === '#ffffff' ? ' white' : ''}`);
           b.style.background = c;
         }
         btn('✎', 'Edit text', () => startEditing(it.id));
+      }
+      if (it.k === 'shape') {
+        const lab = (t) => { const x = document.createElement('span'); x.className = 'bar-sub'; x.textContent = t; bar.append(x); };
+        lab('Line');
+        for (const c of LINE_COLORS) {
+          const b = btn('', 'Line color', () => { it.c = c; renderItem(it); renderBar(); changed(); }, `dot${(it.c || '#1f1f1f') === c ? ' on' : ''}${c === '#ffffff' ? ' white' : ''}`);
+          b.style.background = c;
+        }
+        btn('−', 'Thinner line', () => { it.sw = Math.max(1, (it.sw || 4) - 1); renderItem(it); changed(); });
+        btn('+', 'Thicker line', () => { it.sw = Math.min(24, (it.sw || 4) + 1); renderItem(it); changed(); });
+        if (isBoxShape(it)) {
+          lab('Fill');
+          for (const c of FILL_COLORS) {
+            const b = btn('', c ? 'Fill color' : 'No fill', () => { it.fill = c; renderItem(it); renderBar(); changed(); }, `dot${(it.fill || null) === c ? ' on' : ''}${c ? '' : ' none'}${c === '#ffffff' ? ' white' : ''}`);
+            if (c) b.style.background = c;
+          }
+        }
       }
       if (it.k === 'img') {
         btn('−', 'Smaller', () => setImageWidth(it, imagePct(it) - 10));
@@ -220,10 +321,16 @@ const CanvasItems = (() => {
         const move = (ev) => {
           const dx = (ev.clientX - start.x) / s, dy = (ev.clientY - start.y) / s;
           if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
-          if (resizing) {
+          if (resizing && it.k === 'shape') {
+            it.w = start.iw + dx;
+            it.h = start.ih + dy;
+          } else if (resizing) {
             const ratio = start.ih / start.iw;
             it.w = Math.max(40, Math.min(1000 - it.x, start.iw + dx));
             it.h = it.w * ratio;
+          } else if (it.k === 'shape') {
+            it.x = start.ix + dx;
+            it.y = start.iy + dy;
           } else {
             it.x = Math.max(0, Math.min(1000 - (it.w || 40), start.ix + dx));
             it.y = Math.max(0, start.iy + dy);
@@ -235,6 +342,7 @@ const CanvasItems = (() => {
           el.removeEventListener('pointermove', move);
           el.removeEventListener('pointerup', up);
           el.removeEventListener('pointercancel', up);
+          if (it.k === 'shape') { normalise(it); place(el, it); }
           if (moved) changed();
           else if (it.k === 'text' && (wasSelected || mode === 'text')) startEditing(it.id);
           renderBar();
@@ -285,10 +393,39 @@ const CanvasItems = (() => {
         changed();
         return it;
       },
-      lowestPoint() { return items.reduce((m, it) => Math.max(m, it.y + (it.h || (it.size || 28) * 1.5)), 0); },
+      lowestPoint() {
+        return items.reduce((m, it) => Math.max(m, it.k === 'shape' ? Math.max(it.y, it.y + it.h) : it.y + (it.h || (it.size || 28) * 1.5)), 0);
+      },
+      // Shape tool: drag out a new shape (a simple tap makes a default-size one).
+      beginShape(x, y, opts) {
+        const it = { id: uid(), k: 'shape', shape: opts.shape || 'rect', x, y, w: 0, h: 0, c: opts.c || '#1f1f1f', fill: opts.fill || null, sw: opts.sw || 4 };
+        items.push(it);
+        renderItem(it);
+        this._drawing = it;
+        return it;
+      },
+      updateShape(x, y) {
+        const it = this._drawing;
+        if (!it) return;
+        it.w = x - it.x;
+        it.h = y - it.y;
+        place(els.get(it.id), it);
+      },
+      endShape() {
+        const it = this._drawing;
+        this._drawing = null;
+        if (!it) return;
+        if (Math.abs(it.w) < 6 && Math.abs(it.h) < 6) {
+          if (['line', 'arrow'].includes(it.shape)) { it.w = 160; it.h = 0; }
+          else { it.x -= 80; it.y -= 55; it.w = 160; it.h = 110; }
+        }
+        normalise(it);
+        renderItem(it);
+        changed();
+      },
       busy() { return !!editing; },
     };
   }
 
-  return { create };
+  return { create, drawShape, LINE_COLORS, FILL_COLORS };
 })();

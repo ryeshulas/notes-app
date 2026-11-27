@@ -495,7 +495,7 @@ function thumbnail(strokes, items = []) {
   const cssW = 320;
   let maxY = 0;
   for (const s of strokes) for (let i = 1; i < s.p.length; i += 3) maxY = Math.max(maxY, s.p[i]);
-  for (const it of items) maxY = Math.max(maxY, it.y + (it.h || (it.size || 28) * 1.3));
+  for (const it of items) maxY = Math.max(maxY, it.k === 'shape' ? Math.max(it.y, it.y + it.h) + 10 : it.y + (it.h || (it.size || 28) * 1.3));
   const s = cssW / INK_W;
   const h = Math.min(maxY + 20, 600) * s;
   const dpr = window.devicePixelRatio || 1;
@@ -510,10 +510,11 @@ function thumbnail(strokes, items = []) {
     files.url(it.file).then((u) => {
       if (!u) return;
       const img = new Image();
-      img.onload = () => { ctx.save(); ctx.drawImage(img, it.x, it.y, it.w, it.h); ctx.restore(); strokes.forEach((st) => drawStroke(ctx, st)); drawLabels(); };
+      img.onload = () => { ctx.save(); ctx.drawImage(img, it.x, it.y, it.w, it.h); ctx.restore(); items.filter((x) => x.k === 'shape').forEach((sh) => CanvasItems.drawShape(ctx, sh)); strokes.forEach((st) => drawStroke(ctx, st)); drawLabels(); };
       img.src = u;
     });
   }
+  items.filter((x) => x.k === 'shape').forEach((it) => CanvasItems.drawShape(ctx, it));
   strokes.forEach((st) => drawStroke(ctx, st));
   function drawLabels() {
     for (const it of items.filter((x) => x.k === 'text')) {
@@ -671,6 +672,7 @@ const ink = {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.drawImage(this.base, 0, 0);
     if (this.current) drawStroke(this.ctxFor(this.canvas), this.current);
+    if (this.eraserAt) this.drawEraser(this.ctxFor(this.canvas));
   },
 
   requestRender() {
@@ -687,17 +689,47 @@ const ink = {
 
   pushUndo() { this.undo.push(this.strokes.slice()); if (this.undo.length > 50) this.undo.shift(); },
 
+  // Eraser size follows the size picker: Fine / Medium / Bold.
+  eraserRadius() { return { 2: 7, 4: 14, 8: 28 }[this.width] || 14; },
+
+  // Erase only the ink under the eraser: points inside the circle are removed and strokes are split.
   eraseAt([x, y]) {
-    const r = 14;
-    const before = this.strokes.length;
-    this.strokes = this.strokes.filter((st) => {
-      const pad = st.t === 'highlighter' ? st.w * 2 : st.w;
-      for (let i = 0; i < st.p.length; i += 3) {
-        if (Math.hypot(st.p[i] - x, st.p[i + 1] - y) < r + pad) return false;
+    const r = this.eraserRadius();
+    let changed = false;
+    const out = [];
+    for (const st of this.strokes) {
+      const pad = st.t === 'highlighter' ? st.w * 2 : st.w * 0.6;
+      const bb = strokeBox(st);
+      if (x < bb[0] - r - pad || x > bb[2] + r + pad || y < bb[1] - r - pad || y > bb[3] + r + pad) { out.push(st); continue; }
+      const p = densify(st.p, Math.max(1.5, r / 3));
+      const hit = (i) => Math.hypot(p[i] - x, p[i + 1] - y) < r + pad;
+      let any = false;
+      for (let i = 0; i < p.length; i += 3) if (hit(i)) { any = true; break; }
+      if (!any) { out.push(st); continue; }
+      changed = true;
+      let seg = [];
+      const flush = () => { if (seg.length >= 6) out.push({ ...st, p: seg }); seg = []; };
+      for (let i = 0; i < p.length; i += 3) {
+        if (hit(i)) flush(); else seg.push(p[i], p[i + 1], p[i + 2]);
       }
-      return true;
-    });
-    if (this.strokes.length !== before) this.renderBase();
+      flush();
+    }
+    if (changed) { this.strokes = out; this.renderBase(); }
+  },
+
+  // Show the eraser circle while erasing (and when hovering with the eraser).
+  drawEraser(ctx) {
+    if (!this.eraserAt) return;
+    const [x, y] = this.eraserAt;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, this.eraserRadius(), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,.5)';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(0,0,0,.45)';
+    ctx.stroke();
+    ctx.restore();
   },
 
   growIfNeeded(y) {
@@ -724,7 +756,14 @@ const ink = {
     if (this.tool === 'eraser' || penEraser) {
       this.pushUndo();
       this.erasing = true;
+      this.eraserAt = pt;
       this.eraseAt(pt);
+      this.requestRender();
+      return;
+    }
+    if (this.tool === 'shape') {
+      this.shaping = true;
+      canvasItems.beginShape(pt[0], pt[1], { shape: shapeOpts.shape, fill: shapeOpts.fill, c: this.color, sw: this.width });
       return;
     }
     this.current = { t: this.tool, c: this.color, w: this.width, p: pt.slice() };
@@ -736,11 +775,16 @@ const ink = {
       $('#editor-scroll').scrollTop = this.finger.top - (e.clientY - this.finger.y);
       return;
     }
-    if (!this.current && !this.erasing) return;
+    if (this.shaping) { const pt = this.point(e); canvasItems.updateShape(pt[0], pt[1]); return; }
+    if (!this.current && !this.erasing) {
+      // hovering with the eraser (mouse or pen): show its size
+      if (this.tool === 'eraser' && e.pointerType !== 'touch') { this.eraserAt = this.point(e); this.requestRender(); }
+      return;
+    }
     const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     for (const ev of (evs.length ? evs : [e])) {
       const pt = this.point(ev);
-      if (this.erasing) { this.eraseAt(pt); continue; }
+      if (this.erasing) { this.eraserAt = pt; this.eraseAt(pt); continue; }
       const p = this.current.p;
       const lx = p[p.length - 3], ly = p[p.length - 2];
       if (Math.hypot(pt[0] - lx, pt[1] - ly) < 0.8) continue;
@@ -752,8 +796,11 @@ const ink = {
   up(e) {
     if (this.finger && e.pointerId === this.finger.id) { this.finger = null; return; }
     if (e.pointerType === 'pen') this.penDown = false;
+    if (this.shaping) { this.shaping = false; canvasItems.endShape(); return; }
     if (this.erasing) {
       this.erasing = false;
+      if (e.pointerType === 'touch') this.eraserAt = null;
+      this.requestRender();
       this.onChange?.();
       return;
     }
@@ -789,11 +836,44 @@ const canvasItems = CanvasItems.create($('#ink-items'), {
 
 function setTool(name) { document.querySelector(`.ink-tools [data-tool="${name}"]`)?.click(); }
 
-// Add images: saved on this device right away, uploaded on the next sync.
-$('#add-image').addEventListener('click', () => $('#image-input').click());
-$('#image-input').addEventListener('change', async (e) => {
-  const list = [...e.target.files];
-  e.target.value = '';
+// Choosing images: camera, photo gallery, or any file on the device (Downloads, file shares, ...).
+const IMAGE_EXTS = '.jpg,.jpeg,.png,.gif,.webp,.bmp,.avif,.heic,.heif';
+function pickImages(anchor, multiple, onFiles) {
+  const menu = $('#pick-menu');
+  const touch = matchMedia('(pointer: coarse)').matches;
+  menu.querySelector('[data-src="camera"]').classList.toggle('hidden', !touch);
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - 200))}px`;
+  menu.style.top = `${Math.min(r.bottom + 6, innerHeight - 170)}px`;
+  menu.classList.remove('hidden');
+  menu.onclick = (e) => {
+    const src = e.target.closest('[data-src]')?.dataset.src;
+    if (!src) return;
+    menu.classList.add('hidden');
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = multiple && src !== 'camera';
+    // A list of file types (instead of image/*) makes Android open its full file browser.
+    input.accept = src === 'files' ? IMAGE_EXTS : 'image/*';
+    if (src === 'camera') input.capture = 'environment';
+    input.onchange = () => { const list = [...input.files]; if (list.length) onFiles(list); };
+    input.click();
+  };
+}
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('#pick-menu, #add-image, #text-image')) $('#pick-menu').classList.add('hidden');
+});
+async function readImage(file) {
+  try { return await prepareImage(file); }
+  catch {
+    const heic = /hei[cf]$/i.test(file.name) || /hei[cf]/i.test(file.type);
+    throw new Error(heic ? 'HEIC photos can\'t be opened in the browser. Save it as JPEG on the phone (or turn off "High efficiency pictures" in the camera settings) and try again.' : 'that file isn\'t an image this browser can open');
+  }
+}
+
+// Add images to the drawing area: saved on this device right away, uploaded on the next sync.
+$('#add-image').addEventListener('click', () => pickImages($('#add-image'), true, addCanvasImages));
+async function addCanvasImages(list) {
   if (!list.length || !state.openId) return;
   // place it where the user is looking
   const sc = $('#editor-scroll');
@@ -801,7 +881,7 @@ $('#image-input').addEventListener('change', async (e) => {
   let y = Math.max(20, (20 - canvasTop) / ink.scale() + 20);
   for (const file of list) {
     try {
-      const { blob, w, h } = await prepareImage(file);
+      const { blob, w, h } = await readImage(file);
       const id = uuid();
       await files.put(id, blob);
       const width = Math.min(700, w * (1 / ink.scale()) * 0.9, 920);
@@ -813,13 +893,69 @@ $('#image-input').addEventListener('change', async (e) => {
     }
   }
   setTool('select');
-});
+}
 
 ink.canvas.addEventListener('pointerdown', (e) => ink.down(e));
 ink.canvas.addEventListener('pointermove', (e) => ink.move(e));
 ink.canvas.addEventListener('pointerup', (e) => ink.up(e));
 ink.canvas.addEventListener('pointercancel', (e) => ink.up(e));
 ink.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+ink.canvas.addEventListener('pointerleave', () => { if (!ink.erasing && ink.eraserAt) { ink.eraserAt = null; ink.requestRender(); } });
+
+// helpers for the eraser
+const strokeBoxes = new WeakMap();
+function strokeBox(st) {
+  let b = strokeBoxes.get(st);
+  if (!b) {
+    b = [Infinity, Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < st.p.length; i += 3) {
+      b[0] = Math.min(b[0], st.p[i]); b[1] = Math.min(b[1], st.p[i + 1]);
+      b[2] = Math.max(b[2], st.p[i]); b[3] = Math.max(b[3], st.p[i + 1]);
+    }
+    strokeBoxes.set(st, b);
+  }
+  return b;
+}
+// add in-between points so long, fast strokes can be erased in the middle too
+function densify(p, step) {
+  const out = [p[0], p[1], p[2]];
+  for (let i = 3; i < p.length; i += 3) {
+    const x0 = p[i - 3], y0 = p[i - 2], x1 = p[i], y1 = p[i + 1];
+    const n = Math.floor(Math.hypot(x1 - x0, y1 - y0) / step);
+    for (let k = 1; k < n; k++) {
+      const t = k / n;
+      out.push(Math.round((x0 + (x1 - x0) * t) * 10) / 10, Math.round((y0 + (y1 - y0) * t) * 10) / 10, p[i + 2]);
+    }
+    out.push(x1, y1, p[i + 2]);
+  }
+  return out;
+}
+
+// ---- shape tool options ----
+const shapeOpts = { shape: localStorage.getItem('shapeKind') || 'rect', fill: localStorage.getItem('shapeFill') || null };
+document.querySelectorAll('#shape-bar [data-shape]').forEach((b) => {
+  b.classList.toggle('on', b.dataset.shape === shapeOpts.shape);
+  b.addEventListener('click', () => {
+    shapeOpts.shape = b.dataset.shape;
+    localStorage.setItem('shapeKind', shapeOpts.shape);
+    document.querySelectorAll('#shape-bar [data-shape]').forEach((x) => x.classList.toggle('on', x === b));
+  });
+});
+(function buildShapeFills() {
+  const wrap = $('#shape-fills');
+  for (const c of CanvasItems.FILL_COLORS) {
+    const b = document.createElement('button');
+    b.className = `dot${c ? '' : ' none'}${c === '#ffffff' ? ' white' : ''}${(shapeOpts.fill || null) === c ? ' on' : ''}`;
+    b.title = c ? 'Fill color' : 'No fill (outline only)';
+    if (c) b.style.background = c;
+    b.addEventListener('click', () => {
+      shapeOpts.fill = c;
+      if (c) localStorage.setItem('shapeFill', c); else localStorage.removeItem('shapeFill');
+      wrap.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    });
+    wrap.append(b);
+  }
+})();
 let inkWidth = 0;
 new ResizeObserver((entries) => {
   const w = Math.round(entries[0].contentRect.width);
@@ -832,6 +968,8 @@ document.querySelectorAll('.ink-tools [data-tool]').forEach((b) => b.addEventLis
   ink.tool = b.dataset.tool;
   document.querySelectorAll('.ink-tools [data-tool]').forEach((x) => x.classList.toggle('active', x === b));
   canvasItems.setMode(ink.tool === 'select' || ink.tool === 'text' ? ink.tool : 'pen');
+  $('#shape-bar').classList.toggle('hidden', ink.tool !== 'shape');
+  if (ink.tool !== 'eraser' && ink.eraserAt) { ink.eraserAt = null; ink.requestRender(); }
   localStorage.setItem('inkTool', ink.tool);
 }));
 (function buildInkColors() {
@@ -861,21 +999,19 @@ const body = BodyEditor.create($('#note-body'), {
 
 // Pictures in the text
 $('#text-image').addEventListener('pointerdown', (e) => e.preventDefault());
-$('#text-image').addEventListener('click', () => $('#text-image-input').click());
-$('#text-image-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
+$('#text-image').addEventListener('click', () => pickImages($('#text-image'), false, addTextImage));
+async function addTextImage([file]) {
   if (!file || !state.openId) return;
   try {
-    const { blob } = await prepareImage(file);
+    const { blob } = await readImage(file);
     const id = uuid();
     await files.put(id, blob);
     body.insertImage(id);
   } catch (err) { alert(`Couldn't add that picture: ${err.message || err}`); }
-});
+}
 
 // ---- formatting bar ----
-const TEXT_COLORS = [null, '#d32f2f', '#e67700', '#2e7d32', '#1e5bd8', '#8e24aa', '#6d4c41', '#757575'];
+const TEXT_COLORS = [null, '#d32f2f', '#e67700', '#2e7d32', '#1e5bd8', '#8e24aa', '#6d4c41', '#757575', '#ffffff'];
 const HIGHLIGHTS = [null, '#fff176', '#b9f6a8', '#a8dcff', '#ffc1d3', '#ffd8a8'];
 let lastColor = '#d32f2f';
 let lastHighlight = '#fff176';
@@ -900,7 +1036,8 @@ function openPalette(anchor, colors, onPick) {
   pop.dataset.for = anchor.id;
   for (const c of colors) {
     const b = document.createElement('button');
-    if (c) b.style.background = c; else { b.className = 'none'; b.title = anchor.id === 'fmt-hl' ? 'No highlight' : 'Default color'; }
+    if (c) { b.style.background = c; if (c === '#ffffff') { b.className = 'white'; b.title = 'White'; } }
+    else { b.className = 'none'; b.title = anchor.id === 'fmt-hl' ? 'No highlight' : 'Default color'; }
     keepFocus(b);
     b.addEventListener('click', () => { pop.classList.add('hidden'); onPick(c); });
     pop.append(b);
