@@ -2,6 +2,14 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.19.0
+- Text and drawing now share one page, like Samsung Notes: write or draw right over and around your typed text.
+- The page has a fixed width and scales to the screen, so handwriting stays lined up with the text on the phone, tablet and laptop (text is larger on bigger screens, up to a limit).
+- New **Type / Write** switch above the toolbar replaces the divider and "Hide drawing". Touching the page with the S Pen switches to Write automatically; with a pen in use, a finger tap on the text switches back to typing at that spot.
+- The page grows as you type, and zoom now enlarges the whole page.
+- Older notes are converted the first time they're opened: the drawing is moved just below the text so nothing overlaps.
+- Printing uses the combined page.
+
 ## 0.18.0
 - **Resize text and drawing areas**: drag the divider between the text and the drawing to give the text more
   room, or tap **Hide drawing** for notes that are mostly text (tap **Show drawing area** to bring it back).

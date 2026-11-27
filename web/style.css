@@ -181,7 +181,7 @@ html.dark .sel-btn.on { background: #5a4a14; }
 .text-tools { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 4px; }
 .text-tools .tool { font-size: 13px; padding: 4px 9px; background: rgba(255,255,255,.5); }
 .text-tools .tool.active { background: #fff; box-shadow: 0 0 0 1px var(--line); }
-.note-body { font-size: 15px; line-height: 1.45; padding: 4px 2px 8px; min-height: 2.6em; cursor: text; }
+.note-body { font-size: 1em; line-height: 1.45; min-height: 2.6em; cursor: text; }
 /* Divider between the text and the drawing: drag it to resize, or hide the drawing */
 .split { display: flex; align-items: center; justify-content: center; gap: 10px; height: 26px; margin: 2px 0; cursor: ns-resize;
   touch-action: none; user-select: none; position: relative; }
@@ -199,7 +199,7 @@ html.dark .split-btn { background: rgba(0,0,0,.3); }
 .note-body .marker { flex: 0 0 auto; min-width: 0; color: #4a463e; user-select: none; }
 .note-body .t-ul .marker, .note-body .t-ol .marker { min-width: 1.4em; text-align: right; padding-right: 2px; }
 .note-body .t-todo .marker { display: flex; align-items: center; height: 1.45em; }
-.note-body .t-todo input { width: 18px; height: 18px; margin: 0 2px; accent-color: #b07c00; cursor: pointer; }
+.note-body .t-todo input { width: 1.15em; height: 1.15em; margin: 0 .15em; accent-color: #b07c00; cursor: pointer; }
 .note-body .t-p .marker { display: none; }
 .note-body .txt { flex: 1; min-width: 0; outline: none; white-space: pre-wrap; word-break: break-word; min-height: 1.45em; }
 .note-body .done .txt { text-decoration: line-through; color: var(--muted); }
@@ -214,14 +214,31 @@ html.dark .split-btn { background: rgba(0,0,0,.3); }
 .img-tools button.on { background: #ffe9a8; }
 .img-tools button.danger:hover { background: #fde2e1; }
 .note-body .txt[data-placeholder]:empty::before { content: attr(data-placeholder); color: var(--muted); }
-.ink-head { position: sticky; top: 0; left: 0; z-index: 3; margin: 6px 0; }
+.tools-head { position: sticky; top: 0; left: 0; z-index: 5; margin: 0 0 8px; padding: 6px 0 4px; background: var(--c, var(--note)); }
 /* option bars float just under the drawing toolbar so the drawing never shifts under the pen */
-.ink-head > .item-bar { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; z-index: 4; }
+.tools-head > .item-bar { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; z-index: 4; }
 #editor-scroll { overflow-x: auto; }
+/* Type / Write switch */
+.mode-switch { display: inline-flex; border-radius: 10px; overflow: hidden; margin-bottom: 6px; box-shadow: 0 0 0 1px var(--line); background: rgba(255,255,255,.6); }
+.mode-btn { border: 0; background: none; padding: 6px 14px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.mode-btn.on { background: #fff; color: var(--text); box-shadow: inset 0 -3px 0 #d99a00; }
+#editor.mode-type .write-tools, #editor.mode-type .tools-head > .item-bar { display: none !important; }
+#editor.mode-write .type-tools { display: none; }
+html.dark .mode-switch { background: rgba(0,0,0,.25); }
+html.dark .mode-btn.on { background: #2c2b27; }
+
+/* One page: typed text with the drawing layer on top, at a fixed width that scales to the screen */
+.page { position: relative; margin: 0 auto 40px; font-size: calc(15px * var(--k, 1)); border-radius: 8px;
+  background-color: rgba(255,255,255,.35); background-image: radial-gradient(rgba(0,0,0,.12) 1px, transparent 1px);
+  background-size: calc(24px * var(--k, 1)) calc(24px * var(--k, 1)); }
+html.dark .page { background-color: rgba(0,0,0,.15); background-image: radial-gradient(rgba(255,255,255,.12) 1px, transparent 1px); }
+.page .note-body { position: relative; z-index: 1; padding: .4em .6em 1em; }
+.page #ink-wrap { position: absolute; left: 0; top: 0; width: 100%; z-index: 2; background: none !important; border-radius: 0; }
+#editor.mode-type #ink-wrap, #editor.mode-type #ink-wrap * { pointer-events: none !important; }
 .zoom-level { font-size: 12px; min-width: 46px; }
 #lasso-bar .danger { margin-left: 0; }
 #lasso-bar .bar-hint { margin-left: 4px; margin-right: auto; }
-.ink-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+.ink-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 0;
   background: rgba(255,255,255,.7); backdrop-filter: blur(6px); border-radius: 10px; padding: 4px 6px; }
 .tool { background: none; border: 0; padding: 5px 8px; border-radius: 6px; font-size: 15px; line-height: 1; vertical-align: middle; }
 .tool svg { display: block; }
@@ -230,7 +247,7 @@ html.dark .split-btn { background: rgba(0,0,0,.3); }
 .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
 .ink-swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; margin: 0 2px; padding: 0; vertical-align: middle; }
 .ink-swatch.active { border-color: #fff; box-shadow: 0 0 0 2px #333; }
-#ink-wrap { background: rgba(255,255,255,.35); border-radius: 8px;
+#ink-wrap { border-radius: 8px;
   background-image: radial-gradient(rgba(0,0,0,.12) 1px, transparent 1px); background-size: 24px 24px; }
 /* Layers: images (bottom) → ink → labels (top) */
 #ink-wrap { position: relative; isolation: isolate; }
@@ -354,8 +371,7 @@ body:not(.menu-pinned) #sidebar.open { transform: none; }
   .card h3 { font-size: 19px; margin-bottom: 2px; padding-right: 24px; }
   .card .meta { font-size: 13px; margin-bottom: 10px; }
   .card p { font-size: 15px; line-height: 1.45; -webkit-line-clamp: 4; }
-  .note-body { font-size: 17px; }
-  .note-body .t-todo input { width: 22px; height: 22px; }
+  #editor-scroll { padding: 0 8px 40px; }
   .card .pin { top: 14px; right: 16px; font-size: 14px; }
   .section-title { margin-top: 10px; font-size: 15px; text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 700; }
   #editor { position: fixed; inset: 0; width: 100%; }
@@ -400,7 +416,7 @@ html.dark .theme-pick { color: var(--muted); }
   @page { margin: 14mm; }
   html, body { overflow: visible !important; height: auto !important; background: #fff; }
   #sidebar, #list-pane, #scrim, .editor-bar button, #note-folder, .colors, .format-tools, .text-tools, .ink-head,
-  #fmt-pop, .history, .note-menu, .update-banner, #fatal, .fab, .resize-handle, .img-tools { display: none !important; }
+  #fmt-pop, .history, .note-menu, .tools-head, .update-banner, #fatal, .fab, .resize-handle, .img-tools { display: none !important; }
   #login { display: none !important; }
   #app { display: block !important; padding: 0 !important; height: auto !important; background: #fff !important; }
   :root { background: #fff; }
@@ -412,7 +428,6 @@ html.dark .theme-pick { color: var(--muted); }
   #ink { visibility: hidden !important; }
   .note-body .txt[data-placeholder]:empty::before { content: none; }
   #ink-wrap.print-empty { display: none !important; }
-  .split { display: none !important; }
-  .note-body { min-height: 0 !important; }
+  .page { background: none !important; margin: 0 !important; }
   .item.selected { outline: none !important; }
 }

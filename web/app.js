@@ -792,7 +792,8 @@ const ink = {
     this.strokes = (inkData?.strokes || []).slice();
     canvasItems.load(inkData?.items || []);
     this.sel = []; this.selBox = null; this.lasso = null; this.moving = null; showLassoBar();
-    this.zoom = 1; $('#ink-wrap').style.width = ''; $('#zoom-reset').textContent = '100%';
+    this.zoom = 1; $('#zoom-reset').textContent = '100%';
+    layoutPage();
     // At least enough drawing space to fill the screen below the toolbar.
     const w = this.canvas.parentElement.clientWidth || INK_W;
     const fill = Math.round((window.innerHeight * 0.8) / (w / INK_W));
@@ -810,6 +811,8 @@ const ink = {
     const dpr = window.devicePixelRatio || 1;
     const cssH = this.height * s;
     this.canvas.style.height = `${cssH}px`;
+    $('#ink-wrap').style.height = `${cssH}px`;
+    if (!printK) $('#page').style.minHeight = `${cssH}px`;
     for (const c of [this.canvas, this.base]) { c.width = Math.round(cssW * dpr); c.height = Math.round(cssH * dpr); }
     this.renderBase();
     canvasItems.relayout();
@@ -912,13 +915,12 @@ const ink = {
   setZoom(z, cx, cy) {
     z = Math.max(1, Math.min(4, z));
     if (Math.abs(z - this.zoom) < 0.005) return;
-    const wrap = $('#ink-wrap'), sc = $('#editor-scroll');
+    const wrap = $('#page'), sc = $('#editor-scroll');
     const r = wrap.getBoundingClientRect();
     if (cx === undefined) { const v = sc.getBoundingClientRect(); cx = v.left + v.width / 2; cy = v.top + v.height / 2; }
     const fx = (cx - r.left) / r.width, fy = (cy - r.top) / r.height;
     this.zoom = z;
-    wrap.style.width = z === 1 ? '' : `${z * 100}%`;
-    this.resize();
+    layoutPage();
     const n = wrap.getBoundingClientRect();
     sc.scrollLeft += n.left + fx * n.width - cx;
     sc.scrollTop += n.top + fy * n.height - cy;
@@ -1005,7 +1007,7 @@ const ink = {
       // With a stylus around, fingers scroll and palms are ignored.
       if (this.penDown) return;
       const sc = $('#editor-scroll');
-      this.finger = { id: e.pointerId, y: e.clientY, top: sc.scrollTop };
+      this.finger = { id: e.pointerId, x: e.clientX, y: e.clientY, top: sc.scrollTop, moved: false };
       return;
     }
     if (e.button !== 0 && e.button !== 5 && e.pointerType === 'mouse') return;
@@ -1077,6 +1079,7 @@ const ink = {
       return;
     }
     if (this.finger && e.pointerId === this.finger.id) {
+      if (Math.abs(e.clientY - this.finger.y) > 8 || Math.abs(e.clientX - (this.finger.x ?? e.clientX)) > 8) this.finger.moved = true;
       $('#editor-scroll').scrollTop = this.finger.top - (e.clientY - this.finger.y);
       return;
     }
@@ -1103,7 +1106,12 @@ const ink = {
       this.touches.delete(e.pointerId);
       if (this.pinch) { if (this.touches.size < 2) this.pinch = null; return; }
     }
-    if (this.finger && e.pointerId === this.finger.id) { this.finger = null; return; }
+    if (this.finger && e.pointerId === this.finger.id) {
+      const tap = !this.finger.moved;
+      this.finger = null;
+      if (tap && this.tool !== 'select' && this.tool !== 'text') tapToType(e.clientX, e.clientY);
+      return;
+    }
     if (this.moving) {
       const moved = this.moving.moved;
       this.moving = null;
@@ -1320,18 +1328,109 @@ document.querySelectorAll('#shape-bar [data-shape]').forEach((b) => {
     wrap.append(b);
   }
 })();
-let inkWidth = 0;
-new ResizeObserver((entries) => {
-  const w = Math.round(entries[0].contentRect.width);
-  if (w === inkWidth) return;
-  inkWidth = w;
-  if (state.openId) requestAnimationFrame(() => ink.resize());
-}).observe($('#ink-wrap'));
+// ---- the page: typed text with the drawing layer on top ----
+// The page has a fixed design width (like a sheet of paper) and is scaled to fit the screen,
+// so handwriting stays lined up with the text on every device.
+const PAGE_BASE = 380;      // page width (CSS px) at 100%; text is 15px at that size
+const PAGE_MAX_K = 1.4;     // don't blow the page up more than this on big screens
+let printK = null;
+function layoutPage() {
+  const sc = $('#editor-scroll'), page = $('#page');
+  const cs = getComputedStyle(sc);
+  const avail = sc.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  if (avail <= 0) return;
+  const k = printK || Math.min(avail / PAGE_BASE, PAGE_MAX_K) * ink.zoom;
+  page.style.width = `${Math.round(PAGE_BASE * k)}px`;
+  page.style.setProperty('--k', k.toFixed(4));
+  ink.resize();
+}
+let pageAvail = 0;
+new ResizeObserver(() => {
+  const w = $('#editor-scroll').clientWidth;
+  if (w === pageAvail) return;
+  pageAvail = w;
+  if (state.openId) requestAnimationFrame(layoutPage);
+}).observe($('#editor-scroll'));
+// The page grows as the text gets longer.
+new ResizeObserver(() => {
+  if (!state.openId) return;
+  const need = Math.ceil($('#note-body').offsetHeight / ink.scale()) + 250;
+  if (need > ink.height) { ink.height = need; ink.resize(); }
+}).observe($('#note-body'));
+
+// ---- Type / Write ----
+state.mode = 'type';
+function setMode(m) {
+  state.mode = m;
+  $('#editor').classList.toggle('mode-type', m === 'type');
+  $('#editor').classList.toggle('mode-write', m === 'write');
+  $('#mode-type').classList.toggle('on', m === 'type');
+  $('#mode-write').classList.toggle('on', m === 'write');
+  if (m === 'type') { canvasItems.setMode('pen'); ink.clearSelection(); }
+  else {
+    canvasItems.setMode(ink.tool === 'select' || ink.tool === 'text' ? ink.tool : 'pen');
+    if (body.focused()) document.activeElement.blur();
+  }
+}
+$('#mode-type').addEventListener('click', () => { setMode('type'); body.focusEnd(); });
+$('#mode-write').addEventListener('click', () => setMode('write'));
+// The S Pen always writes: touching the page with it switches to Write and starts the stroke.
+$('#page').addEventListener('pointerdown', (e) => {
+  if (state.mode !== 'type' || e.pointerType !== 'pen') return;
+  e.preventDefault();
+  e.stopPropagation();
+  setMode('write');
+  ink.down(e);
+}, { capture: true });
+// In Type mode, tapping below the text puts the cursor at the end.
+$('#page').addEventListener('click', (e) => {
+  if (state.mode === 'type' && (e.target.id === 'page' || e.target.id === 'note-body' || e.target.closest('#ink-wrap'))) body.focusEnd();
+});
+// In Write mode with an S Pen, a finger tap on the text switches to typing at that spot.
+function tapToType(x, y) {
+  setMode('type');
+  requestAnimationFrame(() => {
+    let node = null, offset = 0;
+    if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(x, y); if (p) { node = p.offsetNode; offset = p.offset; } }
+    else if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); if (r) { node = r.startContainer; offset = r.startOffset; } }
+    const txt = node && (node.nodeType === 1 ? node : node.parentElement)?.closest?.('#note-body .txt');
+    if (!txt) { body.focusEnd(); return; }
+    txt.focus();
+    const r = document.createRange();
+    r.setStart(node, offset);
+    r.collapse(true);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+  });
+}
+
+// Older notes had the drawing in its own area below the text. The first time one is opened,
+// move its drawing down below the text so nothing overlaps on the combined page.
+async function migrateToPage(id) {
+  const n = getNote(id);
+  if (!n || n.data.page) return;
+  const inkCount = (n.data.ink?.strokes?.length || 0) + (n.data.ink?.items?.length || 0);
+  if (!inkCount || !(n.data.text || '').trim()) { n.data = { ...n.data, page: 1 }; return; }
+  const imgs = [...$('#note-body').querySelectorAll('img')];
+  await Promise.race([
+    Promise.all(imgs.map((img) => (img.complete && img.naturalWidth ? 0 : new Promise((r) => { img.addEventListener('load', r, { once: true }); img.addEventListener('error', r, { once: true }); })))),
+    new Promise((r) => setTimeout(r, 2500)),
+  ]);
+  const cur = getNote(id);
+  if (state.openId !== id || !cur || cur.data.page) return;
+  const shift = Math.ceil($('#note-body').offsetHeight / ink.scale()) + 20;
+  ink.strokes = ink.strokes.map((st) => ({ ...st, p: st.p.map((v, i) => (i % 3 === 1 ? Math.round((v + shift) * 10) / 10 : v)) }));
+  canvasItems.shiftAll(shift);
+  ink.height += shift;
+  ink.resize();
+  cur.data = { ...cur.data, page: 1 };
+  editor.queueSave(0);
+}
 
 document.querySelectorAll('.ink-tools [data-tool]').forEach((b) => b.addEventListener('click', () => {
   ink.tool = b.dataset.tool;
   document.querySelectorAll('.ink-tools [data-tool]').forEach((x) => x.classList.toggle('active', x === b));
-  canvasItems.setMode(ink.tool === 'select' || ink.tool === 'text' ? ink.tool : 'pen');
+  if (state.mode === 'write') canvasItems.setMode(ink.tool === 'select' || ink.tool === 'text' ? ink.tool : 'pen');
   $('#shape-bar').classList.toggle('hidden', ink.tool !== 'shape');
   if (ink.tool !== 'lasso') ink.clearSelection();
   if (ink.tool !== 'eraser' && ink.eraserAt) { ink.eraserAt = null; ink.requestRender(); }
@@ -1442,7 +1541,8 @@ const editor = {
     $('#editor').style.setProperty('--c', noteColor(d.color));
     document.querySelectorAll('#note-colors .swatch').forEach((s) => s.classList.toggle('active', s.dataset.color === (d.color || 'yellow')));
     ink.load(d.ink);
-    applyNoteLayout(d.layout);
+    setMode(!(d.text || '').trim() && ((d.ink?.strokes?.length || 0) + (d.ink?.items?.length || 0)) ? 'write' : 'type');
+    if (!d.page) migrateToPage(id);
     if (isPopout) document.title = d.title || 'Note';
   },
   collect() {
@@ -1476,64 +1576,6 @@ const editor = {
   },
 };
 ink.onChange = () => editor.queueSave(600);
-
-// ---- text / drawing split ----
-// Each note keeps its layout: how much room the text gets (share of the screen) and whether the drawing shows.
-const DEFAULT_LAYOUT = { text: 0, draw: true };
-function lastLayout() { try { return { ...DEFAULT_LAYOUT, ...JSON.parse(localStorage.getItem('lastLayout') || '{}') }; } catch { return { ...DEFAULT_LAYOUT }; } }
-function applyNoteLayout(layout) {
-  const l = { ...DEFAULT_LAYOUT, ...(layout || {}) };
-  const sc = $('#editor-scroll');
-  const nb = $('#note-body');
-  $('#editor').classList.toggle('draw-hidden', !l.draw);
-  $('#draw-toggle').textContent = l.draw ? 'Hide drawing' : '✏️ Show drawing area';
-  if (!l.draw) {
-    // text only: the text fills the screen
-    nb.style.minHeight = `${Math.max(120, sc.clientHeight - nb.offsetTop - 60)}px`;
-  } else {
-    nb.style.minHeight = l.text ? `${Math.round(l.text * sc.clientHeight)}px` : '';
-    requestAnimationFrame(() => ink.resize());
-  }
-}
-function saveLayout(change) {
-  const n = getNote(state.openId);
-  if (!n) return;
-  const layout = { ...DEFAULT_LAYOUT, ...(n.data.layout || {}), ...change };
-  n.data = { ...n.data, layout };
-  localStorage.setItem('lastLayout', JSON.stringify(layout));
-  applyNoteLayout(layout);
-  editor.queueSave(300);
-}
-$('#draw-toggle').addEventListener('pointerdown', (e) => e.stopPropagation());
-$('#draw-toggle').addEventListener('click', () => {
-  const n = getNote(state.openId);
-  saveLayout({ draw: !({ ...DEFAULT_LAYOUT, ...(n?.data.layout || {}) }).draw });
-});
-// Drag the divider to resize the text area
-$('#split').addEventListener('pointerdown', (e) => {
-  if ($('#editor').classList.contains('draw-hidden') || e.target.closest('button')) return;
-  e.preventDefault();
-  const sc = $('#editor-scroll'), nb = $('#note-body'), handle = $('#split');
-  const startY = e.clientY, startH = nb.offsetHeight;
-  try { handle.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-  const move = (ev) => {
-    const h = Math.max(60, Math.min(sc.clientHeight * 0.95, startH + ev.clientY - startY));
-    nb.style.minHeight = `${h}px`;
-  };
-  const up = () => {
-    handle.removeEventListener('pointermove', move);
-    handle.removeEventListener('pointerup', up);
-    handle.removeEventListener('pointercancel', up);
-    const h = parseFloat(nb.style.minHeight) || nb.offsetHeight;
-    saveLayout({ text: Math.round((h / sc.clientHeight) * 100) / 100 });
-  };
-  handle.addEventListener('pointermove', move);
-  handle.addEventListener('pointerup', up);
-  handle.addEventListener('pointercancel', up);
-});
-// Tapping empty space in the text area puts the cursor at the end
-$('#note-body').addEventListener('click', (e) => { if (e.target.id === 'note-body') body.focusEnd(); });
-window.addEventListener('resize', () => { const n = state.openId && getNote(state.openId); if (n) applyNoteLayout(n.data.layout); });
 
 // List buttons. pointerdown + preventDefault keeps the keyboard open on phones.
 document.querySelectorAll('.text-tools [data-line]').forEach((b) => {
@@ -1625,7 +1667,7 @@ function newNote(mode = 'text') {
   const id = uuid();
   state.draft = {
     key: keyOf('note', id), kind: 'note', id, updated_at: Date.now(), deleted: false,
-    data: { title: '', text: '', folder, color: 'yellow', pinned: false, ink: { h: DEFAULT_INK_H, strokes: [] }, created: Date.now(), layout: lastLayout() },
+    data: { title: '', text: '', folder, color: 'yellow', pinned: false, ink: { h: DEFAULT_INK_H, strokes: [] }, created: Date.now(), page: 1 },
   };
   openNote(id, { focus: mode === 'text' && !ink.penSeen ? 'text' : null });
 }
@@ -1750,14 +1792,14 @@ window.addEventListener('beforeprint', () => {
   if (!state.openId) return;
   printedDark = isDark();
   if (printedDark) { document.documentElement.classList.remove('dark'); editor.load(state.openId); }
-  const wrap = $('#ink-wrap');
+  const wrap = $('#ink-wrap'), page = $('#page');
   const used = Math.max(ink.strokes.reduce((m, st) => { for (let i = 1; i < st.p.length; i += 3) m = Math.max(m, st.p[i]); return m; }, 0), canvasItems.lowestPoint());
+  // Print the page at a fixed size, trimmed to what's on it.
+  printK = 1.4;
+  layoutPage();
+  const h = Math.max(used ? (used + 30) * ink.scale() : 0, $('#note-body').offsetHeight + 10);
+  page.style.height = `${h}px`; page.style.minHeight = `${h}px`; page.style.overflow = 'hidden';
   if (!used) { wrap.classList.add('print-empty'); return; }
-  // Draw at the printed page's width so nothing stretches, and trim the empty space below.
-  wrap.style.width = '680px';
-  ink.resize();
-  wrap.style.height = `${(used + 30) * ink.scale()}px`;
-  wrap.style.overflow = 'hidden';
   // Browsers print canvases on a solid white background, which would hide photos underneath,
   // so print a transparent snapshot of the ink instead.
   const snap = document.createElement('img');
@@ -1769,10 +1811,12 @@ window.addEventListener('beforeprint', () => {
 window.addEventListener('afterprint', () => {
   const wrap = $('#ink-wrap');
   wrap.classList.remove('print-empty');
-  wrap.style.height = ''; wrap.style.overflow = ''; wrap.style.width = '';
+  const page = $('#page');
+  page.style.height = ''; page.style.overflow = '';
+  printK = null;
   $('#ink-print')?.remove();
   if (printedDark) { document.documentElement.classList.add('dark'); printedDark = false; if (state.openId) editor.load(state.openId); return; }
-  if (state.openId) ink.resize();
+  if (state.openId) layoutPage();
 });
 
 // ---------------------------------------------------------------- export / import

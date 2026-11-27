@@ -393,6 +393,8 @@ const CanvasItems = (() => {
         changed();
         return it;
       },
+      // move everything down (used when an older note is converted to the combined page)
+      shiftAll(dy) { items.forEach((it) => { it.y += dy; }); render(); },
       lowestPoint() {
         return items.reduce((m, it) => Math.max(m, it.k === 'shape' ? Math.max(it.y, it.y + it.h) : it.y + (it.h || (it.size || 28) * 1.5)), 0);
       },
