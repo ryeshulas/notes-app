@@ -150,6 +150,8 @@
           <button id="line-outdent" class="tool" title="Move left (Shift+Tab)">⇤</button>
           <button id="line-indent" class="tool" title="Indent / make sub-item (Tab)">⇥</button>
           <button id="clear-done" class="tool" title="Remove checked items">Clear checked</button>
+          <button id="text-select-all" class="tool" title="Select all the typed text (Ctrl+A)">Select all</button>
+          <button id="text-paste" class="tool" title="Paste (Ctrl+V)">📋 Paste</button>
         </div>
           </div>
         <div class="ink-tools write-tools">
@@ -161,6 +163,7 @@
           <button data-tool="shape" class="tool" title="Shapes: drag to draw a rectangle, circle, triangle, line or arrow"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="15.5" cy="15.5" r="5.5" fill="#a8dcff" stroke="currentColor" stroke-width="1.8"/></svg></button>
           <button data-tool="text" class="tool" title="Add a text label: tap where it should go"><span class="tool-t">T</span></button>
           <button id="add-image" class="tool tool-pic" title="Add a picture (you can move and resize it)"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="#fff" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="10" r="1.8" fill="#e0a000"/><path d="M4.5 17.5l5-5 3.5 3.5 2.5-2.5 4 4" fill="none" stroke="#2e7d32" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="tool-label">Picture</span></button>
+          <button id="ink-paste" class="tool tool-pic hidden" title="Paste (Ctrl+V)">📋<span class="tool-label">Paste</span></button>
           <span class="sep"></span>
           <span id="ink-colors"></span>
           <span class="sep"></span>
@@ -185,11 +188,21 @@
             <span id="shape-fills"></span>
             <span class="bar-hint">Line uses the pen color and size</span>
           </div>
+          <div id="text-pick-bar" class="item-bar text-pick-bar hidden">
+            <span class="bar-title">Text</span>
+            <span id="text-pick-count" class="bar-sub"></span>
+            <button id="text-copy" title="Copy (Ctrl+C)">⧉ Copy</button>
+            <button id="text-cut" title="Cut (Ctrl+X)">✂ Cut</button>
+            <button id="text-delete" class="danger" title="Delete">🗑 Delete</button>
+            <button id="text-pick-done" title="Done">✓ Done</button>
+          </div>
           <div id="lasso-bar" class="item-bar hidden">
             <span class="bar-title">Selection</span>
             <span id="lasso-count" class="bar-sub"></span>
             <span class="bar-hint">Drag inside the box to move</span>
             <button id="lasso-text" class="app-only" title="Turn the handwriting into typed text">Aa To text</button>
+            <button id="lasso-copy" title="Copy (Ctrl+C)">⧉ Copy</button>
+            <button id="lasso-cut" title="Cut (Ctrl+X)">✂ Cut</button>
             <button id="lasso-dup" title="Make a copy">⧉ Duplicate</button>
             <button id="lasso-delete" class="danger" title="Delete the selected handwriting">🗑 Delete</button>
             <button id="lasso-done" title="Done">✓ Done</button>
@@ -213,6 +226,8 @@
 
   <div id="update-banner" class="update-banner hidden">A new version is available. <button id="update-reload">Update now</button></div>
 
+  <div id="ctx-menu" class="pick-menu ctx-menu hidden" role="menu"></div>
+  <div id="toast" class="toast hidden"></div>
   <div id="convert-pop" class="convert-pop hidden">
     <div class="convert-head">Handwriting to text</div>
     <div id="convert-status" class="convert-status"></div>

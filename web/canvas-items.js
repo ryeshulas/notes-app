@@ -30,6 +30,41 @@ const CanvasItems = (() => {
     }
     return parts;
   }
+  // Is point (px, py) within r of the shape's outline, or inside it when it's filled?
+  function segDist(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1, L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / L)) : 0;
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+  function inPoly(px, py, pts) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i], [xj, yj] = pts[j];
+      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function shapeHit(it, px, py, r) {
+    const tol = r + (it.sw || 4) / 2;
+    const filled = isBoxShape(it) && it.fill;
+    return shapeParts(it).some((p) => {
+      if (p.type === 'rect') {
+        const pts = [[p.x, p.y], [p.x + p.w, p.y], [p.x + p.w, p.y + p.h], [p.x, p.y + p.h]];
+        if (filled && inPoly(px, py, pts)) return true;
+        return pts.some((a, i) => { const b = pts[(i + 1) % 4]; return segDist(px, py, a[0], a[1], b[0], b[1]) <= tol; });
+      }
+      if (p.type === 'ellipse') {
+        const rx = Math.max(p.rx, 0.5), ry = Math.max(p.ry, 0.5);
+        const d = Math.hypot((px - p.cx) / rx, (py - p.cy) / ry);
+        if (filled && d <= 1) return true;
+        return Math.abs(d - 1) * Math.min(rx, ry) <= tol || (Math.min(rx, ry) < tol && d <= 1 + tol / Math.min(rx, ry));
+      }
+      if (p.type === 'line') return segDist(px, py, p.x1, p.y1, p.x2, p.y2) <= tol;
+      // triangle or arrow head
+      if ((filled || p.type === 'head') && inPoly(px, py, p.pts)) return true;
+      return p.pts.some((a, i) => { const b = p.pts[(i + 1) % p.pts.length]; return segDist(px, py, a[0], a[1], b[0], b[1]) <= tol; });
+    });
+  }
   function shapeSVG(it, ox, oy) {
     const sw = it.sw || 4, c = (window.inkColor || ((x) => x))(it.c || '#1f1f1f');
     const fill = isBoxShape(it) && it.fill ? it.fill : 'none';
@@ -60,7 +95,7 @@ const CanvasItems = (() => {
     ctx.restore();
   }
 
-  function create(layer, { scale, onChange, fileURL, onEditStart, barHost }) {
+  function create(layer, { scale, onChange, fileURL, onEditStart, barHost, barExtras }) {
     let items = [];
     let mode = 'pen';          // 'pen' (items ignore input) | 'select' | 'text'
     let selected = null;       // item id
@@ -262,6 +297,7 @@ const CanvasItems = (() => {
         btn('+', 'Bigger', () => setImageWidth(it, imagePct(it) + 10));
         btn('Full width', 'Fit the width of the page', () => { it.x = 0; setImageWidth(it, 100); });
       }
+      for (const [label, title, fn] of (barExtras ? barExtras(it) : [])) btn(label, title, fn);
       btn('🗑 Delete', 'Delete', () => remove(it.id), 'danger');
       bar.classList.remove('hidden');
     }
@@ -400,6 +436,37 @@ const CanvasItems = (() => {
         render();
         changed();
         return it;
+      },
+      restore(list) {
+        for (const el of els.values()) el.remove();
+        els.clear();
+        items = list.map((it) => JSON.parse(JSON.stringify(it)));
+        selected = null; editing = null;
+        render();
+        changed();
+      },
+      selectedItem() { const it = byId(selected); return it ? JSON.parse(JSON.stringify(it)) : null; },
+      remove(id) { remove(id); },
+      select(id) { selected = id; render(); },
+      // Add copies of items (from the clipboard), moved by dx, dy. Returns the new items.
+      addCopies(list, dx, dy) {
+        const out = list.map((src) => ({ ...JSON.parse(JSON.stringify(src)), id: uid(), x: src.x + dx, y: src.y + dy }));
+        items.push(...out);
+        selected = out.length === 1 ? out[0].id : null;
+        render();
+        changed();
+        return out;
+      },
+      // Eraser: remove shapes whose outline (or fill) is under the eraser circle.
+      eraseShapes(x, y, r) {
+        const hit = items.filter((it) => it.k === 'shape' && shapeHit(it, x, y, r));
+        if (!hit.length) return false;
+        const gone = new Set(hit.map((it) => it.id));
+        items = items.filter((it) => !gone.has(it.id));
+        if (gone.has(selected)) selected = null;
+        render();
+        changed();
+        return true;
       },
       // move everything down (used when an older note is converted to the combined page)
       shiftAll(dy) { items.forEach((it) => { it.y += dy; }); render(); },

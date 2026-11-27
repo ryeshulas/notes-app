@@ -942,7 +942,11 @@ const ink = {
     return [Math.round(((e.clientX - r.left) / s) * 10) / 10, Math.round(((e.clientY - r.top) / s) * 10) / 10, Math.round(pr * 100) / 100];
   },
 
-  pushUndo() { this.undo.push(this.strokes.slice()); if (this.undo.length > 50) this.undo.shift(); },
+  // Undo steps hold the strokes; steps that can remove or add shapes/pictures also hold those.
+  pushUndo(withItems = false) {
+    this.undo.push(withItems ? { strokes: this.strokes.slice(), items: canvasItems.items() } : this.strokes.slice());
+    if (this.undo.length > 50) this.undo.shift();
+  },
 
   // Eraser size follows the size picker: Fine / Medium / Bold.
   eraserRadius() { return { 2: 7, 4: 14, 8: 28 }[this.width] || 14; },
@@ -970,6 +974,7 @@ const ink = {
       flush();
     }
     if (changed) { this.strokes = out; this.renderBase(); }
+    canvasItems.eraseShapes(x, y, r);
   },
 
   // Show the eraser circle while erasing (and when hovering with the eraser).
@@ -1034,7 +1039,7 @@ const ink = {
     }
     const penEraser = e.button === 5 || (e.buttons & 32);
     if (this.tool === 'eraser' || penEraser) {
-      this.pushUndo();
+      this.pushUndo(true);
       this.erasing = true;
       this.eraserAt = pt;
       this.eraseAt(pt);
@@ -1153,7 +1158,8 @@ const ink = {
     const prev = this.undo.pop();
     if (!prev) return;
     this.sel = []; this.selBox = null; showLassoBar();
-    this.strokes = prev;
+    if (Array.isArray(prev)) this.strokes = prev;
+    else { this.strokes = prev.strokes; canvasItems.restore(prev.items); }
     this.renderBase();
     this.onChange?.();
   },
@@ -1168,6 +1174,7 @@ const canvasItems = CanvasItems.create($('#ink-items'), {
   },
   fileURL: (id) => files.url(id),
   barHost: $('#item-bar'),
+  barExtras: () => [['⧉ Copy', 'Copy (Ctrl+C)', () => copyDrawing(false)], ['✂ Cut', 'Cut (Ctrl+X)', () => copyDrawing(true)]],
 });
 
 function setTool(name) { document.querySelector(`.ink-tools [data-tool="${name}"]`)?.click(); }
@@ -1300,6 +1307,200 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') ink.clearSelection();
 });
 
+// ---- copy, cut and paste for typed text (buttons; the keyboard works too) ----
+async function writeClipboard(text) {
+  if (android?.writeClipboard) { android.writeClipboard(text); return true; }
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* fall back below */ }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { /* ignore */ }
+  ta.remove();
+  return ok;
+}
+for (const id of ['#text-copy', '#text-cut', '#text-delete', '#text-pick-done', '#text-select-all', '#text-paste']) {
+  $(id).addEventListener('pointerdown', (e) => e.preventDefault());   // keep the keyboard / cursor where it is
+}
+$('#text-copy').addEventListener('click', async () => { if (await writeClipboard(body.pickedText())) toast('Copied'); });
+$('#text-cut').addEventListener('click', async () => {
+  if (await writeClipboard(body.pickedText())) { body.deletePicked(); toast('Cut'); }
+});
+$('#text-delete').addEventListener('click', () => body.deletePicked());
+$('#text-pick-done').addEventListener('click', () => body.clearPick());
+$('#text-select-all').addEventListener('click', () => body.pickAll());
+$('#text-paste').addEventListener('click', async () => {
+  try {
+    const text = android?.readClipboard ? android.readClipboard() : await navigator.clipboard.readText();
+    if (text) body.pasteText(text); else toast('The clipboard has no text');
+  } catch {
+    toast(android ? 'Long-press in the text and choose Paste' : 'Press Ctrl+V to paste');
+  }
+});
+
+// ---- copy, cut and paste for drawings, shapes, pictures and labels ----
+// Kept in this browser's storage so it works between notes and windows.
+const inkClip = {
+  get() { try { return JSON.parse(localStorage.getItem('inkClip') || 'null'); } catch { return null; } },
+  set(v) { try { localStorage.setItem('inkClip', JSON.stringify(v)); } catch { /* too big */ } updatePasteButton(); },
+};
+let pasteNudge = 0;
+function updatePasteButton() { $('#ink-paste').classList.toggle('hidden', !inkClip.get()); }
+window.addEventListener('storage', (e) => { if (e.key === 'inkClip') updatePasteButton(); });
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.add('hidden'), 1600);
+}
+function itemBox(it) {
+  if (it.k === 'shape') return [Math.min(it.x, it.x + it.w), Math.min(it.y, it.y + it.h), Math.max(it.x, it.x + it.w), Math.max(it.y, it.y + it.h)];
+  return [it.x, it.y, it.x + (it.w || 200), it.y + (it.h || (it.size || 28) * 1.5)];
+}
+// Copy (or cut) the lasso selection, or else the selected shape/picture/label. Returns false if nothing was selected.
+function copyDrawing(cut) {
+  let clip = null;
+  if (ink.sel.length) {
+    clip = { strokes: JSON.parse(JSON.stringify(ink.sel)), items: [], box: ink.selBox.slice() };
+  } else {
+    const it = canvasItems.selectedItem();
+    if (it) clip = { strokes: [], items: [it], box: itemBox(it) };
+  }
+  if (!clip) return false;
+  inkClip.set({ ...clip, from: state.openId });
+  pasteNudge = 0;
+  if (cut) {
+    if (ink.sel.length) $('#lasso-delete').click();
+    else { ink.pushUndo(true); canvasItems.remove(clip.items[0].id); }
+  }
+  toast(cut ? 'Cut' : 'Copied');
+  return true;
+}
+// Paste at a spot on the page (page units), or next to the original / at the top of the view.
+function pasteDrawing(at) {
+  const clip = inkClip.get();
+  if (!clip || !state.openId) return false;
+  setMode('write');
+  const [bx1, by1, bx2, by2] = clip.box;
+  let x, y;
+  if (at) { [x, y] = at; }
+  else {
+    const top = ink.canvas.getBoundingClientRect().top, s = ink.scale();
+    const viewTop = ($('.tools-head').getBoundingClientRect().bottom + 90 - top) / s;
+    const viewBottom = ($('#editor-scroll').getBoundingClientRect().bottom - top) / s;
+    pasteNudge += 30;
+    x = bx1 + pasteNudge;
+    y = by1 + pasteNudge;
+    // From another note, or the original is off screen: put it at the top of the view.
+    if (clip.from !== state.openId || y < viewTop || y > viewBottom - 40) { y = viewTop + pasteNudge - 30; }
+  }
+  x = Math.max(0, Math.min(x, INK_W - Math.min(INK_W, bx2 - bx1)));
+  y = Math.max(0, y);
+  const dx = x - bx1, dy = y - by1;
+  ink.pushUndo(true);
+  ink.clearSelection();
+  const copies = clip.strokes.map((st) => ({ ...st, p: st.p.map((v, i) => (i % 3 === 0 ? Math.round((v + dx) * 10) / 10 : i % 3 === 1 ? Math.round((v + dy) * 10) / 10 : v)) }));
+  if (copies.length) ink.strokes = ink.strokes.concat(copies);
+  const items = clip.items.length ? canvasItems.addCopies(clip.items, dx, dy) : [];
+  ink.growIfNeeded(by2 + dy);
+  if (copies.length) {
+    setTool('lasso');
+    ink.sel = copies;
+    ink.updateSelBox();
+  } else if (items.length) {
+    setTool('select');
+    canvasItems.select(items[0].id);
+  }
+  ink.renderBase();
+  ink.onChange?.();
+  return true;
+}
+$('#lasso-copy').addEventListener('click', () => copyDrawing(false));
+$('#lasso-cut').addEventListener('click', () => copyDrawing(true));
+$('#ink-paste').addEventListener('click', () => pasteDrawing(null));
+updatePasteButton();
+
+const typingInField = () => {
+  const a = document.activeElement;
+  return a && (/INPUT|SELECT|TEXTAREA/.test(a.tagName) || a.isContentEditable);
+};
+// Ctrl+C / Ctrl+X on the drawing (typed text is handled by the text editor).
+document.addEventListener('keydown', (e) => {
+  if (!state.openId || !(e.ctrlKey || e.metaKey) || e.altKey || typingInField()) return;
+  const k = e.key.toLowerCase();
+  if ((k === 'c' || k === 'x') && copyDrawing(k === 'x')) e.preventDefault();
+});
+// Ctrl+V: a picture on the clipboard (e.g. a screenshot) is added to the drawing; otherwise paste
+// what was copied from a drawing. Typed text pastes normally while typing.
+document.addEventListener('paste', (e) => {
+  if (!state.openId || $('#editor').classList.contains('hidden')) return;
+  const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'));
+  const inText = typingInField();
+  if (files.length && (!inText || body.focused())) {
+    e.preventDefault();
+    setMode('write');
+    addCanvasImages(files);
+    return;
+  }
+  if (inText) return;
+  if (pasteDrawing(null)) e.preventDefault();
+});
+
+// Right-click (or long-press) menu on shapes, pictures, labels and lasso selections.
+function showMenu(x, y, entries) {
+  const m = $('#ctx-menu');
+  m.textContent = '';
+  for (const [label, fn, cls] of entries) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (cls) b.className = cls;
+    b.addEventListener('click', () => { m.classList.add('hidden'); fn(); });
+    m.append(b);
+  }
+  m.classList.remove('hidden');
+  const r = m.getBoundingClientRect();
+  m.style.left = `${Math.max(6, Math.min(x, innerWidth - r.width - 6))}px`;
+  m.style.top = `${Math.max(6, Math.min(y, innerHeight - r.height - 6))}px`;
+}
+const hideMenu = () => $('#ctx-menu').classList.add('hidden');
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#ctx-menu')) hideMenu(); }, true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#ctx-menu').classList.contains('hidden')) { e.preventDefault(); hideMenu(); }
+}, true);
+$('#editor-scroll').addEventListener('scroll', hideMenu);
+$('#page').addEventListener('contextmenu', (e) => {
+  if (!state.openId) return;
+  const pt = ink.point(e);
+  const b = ink.selBox;
+  const inSel = state.mode === 'write' && ink.sel.length && b && pt[0] >= b[0] && pt[0] <= b[2] && pt[1] >= b[1] && pt[1] <= b[3];
+  const item = !inSel && itemAt(e.clientX, e.clientY);
+  const clip = inkClip.get();
+  let entries = [];
+  if (inSel) {
+    entries = [['⧉ Copy', () => copyDrawing(false)], ['✂ Cut', () => copyDrawing(true)], ['⧉ Duplicate', () => $('#lasso-dup').click()]];
+    if (android) entries.push(['Aa To text', () => $('#lasso-text').click()]);
+    entries.push(['🗑 Delete', () => $('#lasso-delete').click(), 'danger']);
+  } else if (item) {
+    const id = item.dataset.id;
+    const pick = () => { setMode('write'); if (ink.tool !== 'select') setTool('select'); canvasItems.select(id); };
+    pick();
+    entries = [
+      ['⧉ Copy', () => { pick(); copyDrawing(false); }],
+      ['✂ Cut', () => { pick(); copyDrawing(true); }],
+      ['⧉ Duplicate', () => { pick(); if (copyDrawing(false)) pasteDrawing(null); }],
+      ['🗑 Delete', () => { ink.pushUndo(true); canvasItems.remove(id); }, 'danger'],
+    ];
+  } else if (clip && (state.mode === 'write' || !e.target.closest('#note-body .txt'))) {
+    entries = [['📋 Paste here', () => pasteDrawing([pt[0], pt[1]])]];
+  }
+  if (!entries.length) return;   // normal menu (e.g. on typed text)
+  e.preventDefault();
+  showMenu(e.clientX, e.clientY, entries);
+});
+
 // ---- zoom ----
 $('#zoom-in').addEventListener('click', () => ink.setZoom(ink.zoom * 1.25));
 $('#zoom-out').addEventListener('click', () => ink.setZoom(ink.zoom / 1.25));
@@ -1376,6 +1577,7 @@ function setMode(m) {
   if (m === 'type') { canvasItems.setMode('pen'); ink.clearSelection(); }
   else {
     canvasItems.setMode(ink.tool === 'select' || ink.tool === 'text' ? ink.tool : 'pen');
+    body.clearPick();
     if (body.focused()) document.activeElement.blur();
   }
 }
@@ -1516,6 +1718,10 @@ $('#ink-more').addEventListener('click', () => { ink.height += 500; ink.resize()
 // ---------------------------------------------------------------- editor
 const body = BodyEditor.create($('#note-body'), {
   onChange: () => editor.queueSave(),
+  onPick: (n) => {
+    $('#text-pick-bar').classList.toggle('hidden', !n);
+    $('#text-pick-count').textContent = n === 1 ? '1 line selected' : `${n} lines selected`;
+  },
   onSelectionStyle: (st) => showFormatState(st),
   fileURL: (id) => files.url(id),
 });
@@ -1733,7 +1939,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && state.openId && document.activeElement?.tagName !== 'INPUT' && !body.focused()) {
     e.preventDefault(); ink.undoLast();
   }
-  if (e.key === 'Escape' && state.openId && !isPopout) closeEditor();
+  if (e.key === 'Escape' && state.openId && !isPopout && !e.defaultPrevented && $('#ctx-menu').classList.contains('hidden')) closeEditor();
 });
 
 // ---------------------------------------------------------------- device name (shown in version history)

@@ -223,7 +223,7 @@ const BodyEditor = (() => {
   }
 
   // ---------------------------------------------------------------- the editor
-  function create(root, { onChange, onSelectionStyle, fileURL, placeholder = 'Type here…' } = {}) {
+  function create(root, { onChange, onSelectionStyle, onPick, fileURL, placeholder = 'Type here…' } = {}) {
     let blocks = [clean({ t: 'p', s: '' })];
     let lastIndex = 0;
     let lastSel = null;   // {a:{line,off}, f:{line,off}} — kept so toolbar controls work after focus moves
@@ -570,9 +570,90 @@ const BodyEditor = (() => {
 
     root.addEventListener('focusin', (e) => { const i = indexOf(e.target); if (i >= 0) lastIndex = i; });
 
+    // ---- picking whole lines (drag across lines, Shift+click, Ctrl+A) to copy, cut or delete ----
+    let picked = null;   // [first, last] line index
+    let dragFrom = null;
+    function lineOf(node) {
+      let n = node && (node.nodeType === 1 ? node : node.parentElement);
+      while (n && n.parentElement !== root) n = n.parentElement;
+      return n ? [...root.children].indexOf(n) : null;
+    }
+    function showPicked() {
+      [...root.children].forEach((el, k) => el.classList.toggle('picked', !!picked && k >= picked[0] && k <= picked[1]));
+      onPick && onPick(picked ? picked[1] - picked[0] + 1 : 0);
+    }
+    function pick(a, b) {
+      picked = a == null ? null : [Math.min(a, b), Math.max(a, b)];
+      if (picked) getSelection().removeAllRanges();
+      showPicked();
+    }
+    function pickedText() {
+      if (!picked) return '';
+      readAll();
+      return textFromBlocks(blocks.slice(picked[0], picked[1] + 1).filter((b) => b.t !== 'img'));
+    }
+    // Remove the picked lines; with keepLine an empty line is left in their place. Returns that line's index.
+    function deletePicked(keepLine) {
+      if (!picked) return -1;
+      readAll();
+      const [a, b] = picked;
+      picked = null;
+      blocks.splice(a, b - a + 1, ...(keepLine ? [clean({ t: 'p', s: '' })] : []));
+      if (!blocks.length) blocks = [clean({ t: 'p', s: '' })];
+      let j = Math.min(a, blocks.length - 1);
+      if (blocks[j].t === 'img') j = Math.max(0, textLine(j, -1));
+      structural(j, 0);
+      showPicked();
+      return j;
+    }
+    root.addEventListener('pointerdown', (e) => {
+      const line = lineOf(e.target);
+      if (e.pointerType === 'mouse' && e.button === 0 && line != null && e.shiftKey) {
+        const from = picked ? picked[0] : lastIndex;
+        if (from !== line) { e.preventDefault(); pick(from, line); return; }
+      }
+      if (picked) pick(null);
+      dragFrom = e.pointerType === 'mouse' && e.button === 0 ? line : null;
+    });
+    document.addEventListener('pointermove', (e) => {
+      if (dragFrom == null) return;
+      if (!(e.buttons & 1)) { dragFrom = null; return; }
+      const l = lineOf(document.elementFromPoint(e.clientX, e.clientY));
+      if (l != null && l !== dragFrom) pick(dragFrom, l);
+      else if (l === dragFrom && picked) pick(null);
+    });
+    document.addEventListener('pointerup', () => { dragFrom = null; });
+    root.addEventListener('copy', (e) => {
+      if (!picked) return;
+      e.preventDefault();
+      e.clipboardData.setData('text/plain', pickedText());
+    });
+    root.addEventListener('cut', (e) => {
+      if (!picked) return;
+      e.preventDefault();
+      e.clipboardData.setData('text/plain', pickedText());
+      deletePicked(false);
+    });
+
     root.addEventListener('keydown', (e) => {
       const el = e.target.closest?.('.txt');
       if (!el) return;
+      const modKey = (e.ctrlKey || e.metaKey) && !e.altKey;
+      if (modKey && e.key.toLowerCase() === 'a') { e.preventDefault(); pick(0, blocks.length - 1); return; }
+      if (picked) {
+        const k = e.key.toLowerCase();
+        if (modKey && (k === 'c' || k === 'x' || k === 'v')) return;     // copy / cut / paste events handle these
+        if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); deletePicked(false); return; }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); pick(null); return; }
+        if (e.key.length === 1 && !modKey) {      // typing replaces the picked lines
+          e.preventDefault();
+          deletePicked(true);
+          document.execCommand('insertText', false, e.key);
+          return;
+        }
+        if (['Shift', 'Control', 'Meta', 'Alt'].includes(e.key)) return;
+        pick(null);
+      }
       const i = indexOf(el);
       const c = caretOffset(el);
       const mod = e.ctrlKey || e.metaKey;
@@ -615,14 +696,18 @@ const BodyEditor = (() => {
       }
     });
 
+    function pasteText(i, text) {
+      if (text.includes('\n')) insertLines(i, text);
+      else document.execCommand('insertText', false, text);
+    }
     root.addEventListener('paste', (e) => {
       const el = e.target.closest?.('.txt');
       if (!el) return;
-      e.preventDefault();
       const text = e.clipboardData.getData('text/plain');
-      if (!text) return;
-      if (text.includes('\n')) insertLines(indexOf(el), text);
-      else document.execCommand('insertText', false, text);
+      if (!text) return;      // e.g. a picture: the app adds it to the drawing
+      e.preventDefault();
+      if (picked) { pasteText(deletePicked(true), text); return; }
+      pasteText(indexOf(el), text);
     });
 
     root.addEventListener('input', (e) => {
@@ -635,9 +720,23 @@ const BodyEditor = (() => {
     });
 
     return {
+      pickAll() { readAll(); pick(0, blocks.length - 1); },
+      clearPick() { if (picked) pick(null); },
+      pickedCount() { return picked ? picked[1] - picked[0] + 1 : 0; },
+      pickedText,
+      deletePicked() { deletePicked(false); },
+      // Paste text at the cursor (or over picked lines).
+      pasteText(text) {
+        if (!text) return;
+        if (picked) { pasteText(deletePicked(true), text); return; }
+        let i = lastIndex;
+        if (!root.contains(document.activeElement)) { const j = textLine(blocks.length - 1, -1); focusLine(j, 'end'); i = j; }
+        pasteText(i, text);
+      },
       load(newBlocks) {
         blocks = newBlocks && newBlocks.length ? newBlocks.map(clean) : [clean({ t: 'p', s: '' })];
         lastIndex = 0;
+        if (picked) { picked = null; onPick && onPick(0); }
         lastSel = null;
         render();
         hist = [{ ...snapshot(), kind: 'load' }];

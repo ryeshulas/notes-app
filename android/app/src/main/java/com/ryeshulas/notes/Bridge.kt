@@ -1,5 +1,7 @@
 package com.ryeshulas.notes
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
 import android.os.Build
@@ -102,6 +104,19 @@ class Bridge(private val act: MainActivity) {
         if (json == Prefs.recent(act)) return
         Prefs.setRecent(act, json)
         NotesWidget.refreshAll(act)
+    }
+
+    /** Clipboard access (the WebView can't read the clipboard on its own). */
+    @JavascriptInterface fun readClipboard(): String {
+        val cm = act.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = cm.primaryClip ?: return ""
+        if (clip.itemCount == 0) return ""
+        return clip.getItemAt(0).coerceToText(act)?.toString() ?: ""
+    }
+
+    @JavascriptInterface fun writeClipboard(text: String) {
+        val cm = act.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("Notes", text))
     }
 
     @JavascriptInterface fun setBars(color: String, dark: Boolean) = act.setBars(color, dark)

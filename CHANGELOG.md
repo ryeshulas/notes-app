@@ -2,6 +2,13 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.24.0 (Android app 1.0.1)
+- The eraser removes shapes again: touch a shape's outline (or anywhere inside a filled shape) to remove it. Undo brings it back.
+- Right-click (laptop) or long-press a shape, picture, label or lasso selection for **Copy, Cut, Duplicate, Delete**; right-click an empty spot in Write mode to **Paste here**.
+- Copy / Cut / Paste for drawings: buttons on the selection bars and a **Paste** button in Write mode, plus Ctrl+C / Ctrl+X / Ctrl+V. Works between notes. Pasting a screenshot or copied picture (Ctrl+V) adds it to the drawing.
+- Typed text: select several lines by dragging across them, Shift+click or Ctrl+A (or **Select all**), then **Copy, Cut** or **Delete** (or just type to replace them). New **📋 Paste** button. Escape clears the selection instead of closing the note.
+- Android app 1.0.1: the Paste button and Copy/Cut use the phone's clipboard.
+
 ## 0.23.0
 - Android app 1.0.0 (see README → Android app): handwriting to text with the S Pen (Lasso → **Aa To text**), home screen widget, Quick Settings tile, share into Notes, export to Downloads, print / save as PDF, update notices.
 - The web app recognises the Android app: shows both versions under the folders, hides the pop-out and keep-on-top buttons there, and the phone's Back button closes things one step at a time.

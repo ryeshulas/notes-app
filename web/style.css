@@ -450,3 +450,16 @@ html.in-app #note-popout, html.in-app #pip-note { display: none !important; }
 .convert-actions button { padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.7); font-size: 15px; color: inherit; }
 .convert-actions .primary { background: #f5c84c; border-color: #d99a00; color: #2b2a26; font-weight: 600; }
 html.dark .convert-pop { background: #2c2b27; }
+
+/* right-click menu and short messages */
+.ctx-menu { min-width: 170px; }
+.ctx-menu button { display: block; width: 100%; text-align: left; }
+.ctx-menu .danger { color: #b3261e; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: rgba(30,30,28,.9); color: #fff;
+  padding: 8px 16px; border-radius: 18px; font-size: 14px; z-index: 70; pointer-events: none; }
+
+/* picked lines of typed text */
+.note-body > .picked { background: rgba(66, 133, 244, .22); border-radius: 3px; }
+html.dark .note-body > .picked { background: rgba(120, 170, 255, .28); }
+#editor.mode-type .tools-head > #text-pick-bar:not(.hidden) { display: flex !important; }
+#editor.mode-write #text-pick-bar { display: none !important; }
