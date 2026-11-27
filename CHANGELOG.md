@@ -2,6 +2,14 @@
 
 The version shows in the app under the folder menu. Each change gets a new number.
 
+## 0.16.0
+- **Lasso** tool (dashed loop): circle handwriting to select it, drag inside the box to move it, or use
+  Duplicate / Delete. Works with undo.
+- **Zoom** the drawing area: pinch with two fingers, Ctrl + scroll on the laptop, or the − / 100% / + buttons.
+  Drawing while zoomed lands in the right place; zoom resets when you open another note.
+- The option bars for shapes, labels/images and lasso selections now float over the top of the drawing
+  instead of pushing it down, so the drawing never moves under the pen.
+
 ## 0.15.0
 - **Dark mode**: at the bottom of the folder menu choose Appearance: automatic (follows the phone/PC setting),
   Light or Dark. Notes get darker versions of their colors; black ink, shapes and labels show as light ink

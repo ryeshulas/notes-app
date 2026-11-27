@@ -163,7 +163,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f0c95a; outline-
 .img-tools button.on { background: #ffe9a8; }
 .img-tools button.danger:hover { background: #fde2e1; }
 .note-body .txt[data-placeholder]:empty::before { content: attr(data-placeholder); color: var(--muted); }
-.ink-head { position: sticky; top: 0; z-index: 3; margin: 6px 0; }
+.ink-head { position: sticky; top: 0; left: 0; z-index: 3; margin: 6px 0; }
+/* option bars float just under the drawing toolbar so the drawing never shifts under the pen */
+.ink-head > .item-bar { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; z-index: 4; }
+#editor-scroll { overflow-x: auto; }
+.zoom-level { font-size: 12px; min-width: 46px; }
+#lasso-bar .danger { margin-left: 0; }
+#lasso-bar .bar-hint { margin-left: 4px; margin-right: auto; }
 .ink-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
   background: rgba(255,255,255,.7); backdrop-filter: blur(6px); border-radius: 10px; padding: 4px 6px; }
 .tool { background: none; border: 0; padding: 5px 8px; border-radius: 6px; font-size: 15px; line-height: 1; vertical-align: middle; }

@@ -134,6 +134,7 @@
         <div class="ink-head">
         <div class="ink-tools">
           <button data-tool="select" class="tool" title="Select, move and resize labels and images"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l13 8-6 1.5 3.5 7-2.5 1.2-3.4-7L5 18z" fill="currentColor"/></svg></button>
+          <button data-tool="lasso" class="tool" title="Lasso: circle handwriting to select it, then drag to move it"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4c5 0 8.5 2.3 8.5 5.5S17 15 12 15c-1.4 0-2.7-.2-3.8-.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="3 2.4" stroke-linecap="round"/><path d="M8.2 14.5C5.3 13.6 3.5 11.7 3.5 9.5 3.5 6.3 7 4 12 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="3 2.4" stroke-linecap="round"/><path d="M8.2 14.5c-.6 1.4-.4 3 .8 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
           <button data-tool="pen" class="tool active" title="Pen">✒️</button>
           <button data-tool="highlighter" class="tool" title="Highlighter">🖍️</button>
           <button data-tool="eraser" class="tool" title="Eraser (removes whole strokes)"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6a2 2 0 0 1 2.8 0l3.4 3.4a2 2 0 0 1 0 2.8L12.3 19H20a1 1 0 1 1 0 2H8.6a2 2 0 0 1-1.4-.6l-4.6-4.6a2 2 0 0 1 0-2.8Z" fill="#f28da0"/><path d="M8.4 10.4l6.2 6.2L12.3 19H8.6l-4.6-4.6Z" fill="#fff" stroke="#c45a70" stroke-width="1.2" stroke-linejoin="round"/><path d="M15.2 3.6a2 2 0 0 1 2.8 0l3.4 3.4a2 2 0 0 1 0 2.8L12.3 19H8.6a2 2 0 0 1-1.4-.6l-4.6-4.6a2 2 0 0 1 0-2.8Z" fill="none" stroke="#9c3a52" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
@@ -148,6 +149,10 @@
           </select>
           <button id="ink-undo" class="tool" title="Undo">↶</button>
           <button id="ink-more" class="tool" title="Add more drawing space">＋ space</button>
+          <span class="sep"></span>
+          <button id="zoom-out" class="tool" title="Zoom out">−</button>
+          <button id="zoom-reset" class="tool zoom-level" title="Zoom (pinch with two fingers, or Ctrl + scroll)">100%</button>
+          <button id="zoom-in" class="tool" title="Zoom in">+</button>
         </div>
           <div id="shape-bar" class="item-bar hidden">
             <span class="bar-title">Shape</span>
@@ -159,6 +164,14 @@
             <span class="bar-sub">Fill</span>
             <span id="shape-fills"></span>
             <span class="bar-hint">Line uses the pen color and size</span>
+          </div>
+          <div id="lasso-bar" class="item-bar hidden">
+            <span class="bar-title">Selection</span>
+            <span id="lasso-count" class="bar-sub"></span>
+            <span class="bar-hint">Drag inside the box to move</span>
+            <button id="lasso-dup" title="Make a copy">⧉ Duplicate</button>
+            <button id="lasso-delete" class="danger" title="Delete the selected handwriting">🗑 Delete</button>
+            <button id="lasso-done" title="Done">✓ Done</button>
           </div>
           <div id="item-bar" class="item-bar hidden"></div>
         </div>
